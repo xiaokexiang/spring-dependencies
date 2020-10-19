@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: spring-cloud-consul
+  cloud:
+    consul:
+      discovery:
+        health-check-interval: 10s # 健康检查刷新间隔
+        health-check-path: /spring-cloud-consul/actuator/health # 健康检查的查看路径
+        heartbeat:
+          enabled: true
+management:
+  endpoint:
+    health:
+      show-details: always # 展示健康检查的全部信息
+server:
+  port: 8001
+  servlet:
+    # 指定context-path就需要同时修改health-check-path属性，否则consul会提示健康检查失败
+    context-path: /spring-cloud-consul

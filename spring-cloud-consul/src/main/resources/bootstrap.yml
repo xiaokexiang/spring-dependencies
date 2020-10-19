@@ -1,0 +1,16 @@
+spring:
+  cloud:
+    consul:
+      host: localhost
+      port: 8500
+      # 开启consul的配置功能
+      config:
+        enabled: true
+        format: yaml
+        default-context: demo
+        prefix: config
+        # 开启配置监听
+        watch:
+          enabled: true
+#        prefix: config
+#        data-key: demo
