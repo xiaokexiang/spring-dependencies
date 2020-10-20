@@ -5,6 +5,7 @@ spring:
       port: 8500
       # 开启consul的配置功能
       config:
+        # 在consul服务端界面添加 config/demo/data key
         enabled: true
         format: yaml
         default-context: demo
