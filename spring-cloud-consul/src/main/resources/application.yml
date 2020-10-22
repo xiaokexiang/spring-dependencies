@@ -8,6 +8,7 @@ spring:
         health-check-path: /spring-cloud-consul/actuator/health # 健康检查的查看路径
         heartbeat:
           enabled: true
+        prefer-ip-address: true # 解决host映射导致无法健康检查的问题
 management:
   endpoint:
     health:

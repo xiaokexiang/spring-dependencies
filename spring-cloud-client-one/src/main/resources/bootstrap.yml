@@ -7,3 +7,4 @@ spring:
         health-check-path: /actuator/health
         health-check-interval: 10s
         service-name: client
+        prefer-ip-address: true # 解决host映射导致无法健康检查的问题
