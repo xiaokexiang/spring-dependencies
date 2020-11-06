@@ -9,9 +9,9 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>io.spring</groupId>
-    <artifactId>spring-cloud</artifactId>
+    <artifactId>spring-cloud-dependencies</artifactId>
     <version>1.0.0</version>
-    <name>spring-cloud</name>
+    <name>spring-cloud-dependencies</name>
     <description>Demo project for Spring Cloud</description>
     <packaging>pom</packaging>
 
@@ -37,17 +37,6 @@
                 <version>${spring-cloud-alibaba.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-            <!--spring-cloud-alibaba-->
-            <dependency>
-                <groupId>com.alibaba.cloud</groupId>
-                <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
-                <version>${spring-cloud-alibaba.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.alibaba.cloud</groupId>
-                <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
-                <version>${spring-cloud-alibaba.version}</version>
             </dependency>
             <!--无此jar包会导致consul健康检查失败-->
             <dependency>

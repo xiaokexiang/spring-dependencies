@@ -1,2 +1,2 @@
-io.spring.springclouddatabase.datasource.annotation.EnableDataSource=\
-io.spring.springclouddatabase.datasource.MysqlConfiguration
+io.spring.database.datasource.annotation.EnableDataSource=\
+io.spring.database.datasource.MysqlConfiguration
