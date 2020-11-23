@@ -4,30 +4,17 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
 ### IntelliJ IDEA ###
 .idea
 *.iws
 *.iml
 *.ipr
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### VS Code ###
-.vscode/
+### spring-cloud-dependencies ###
+/spring-cloud-netflix/spring-cloud-client-one/.mvn/
+/spring-cloud-netflix/spring-cloud-client-two/.mvn/
+/spring-cloud-netflix/spring-cloud-eureka-server/.mvn/
+/spring-cloud-netflix/spring-cloud-eureka-client/.mvn/
+/spring-cloud-consul/.mvn/
+/spring-cloud-alibaba/spring-cloud-nacos/.mvn/
+/spring-cloud-alibaba/spring-cloud-sentinel/.mvn/
