@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>io.spring</groupId>
-    <artifactId>spring-cloud-dependencies</artifactId>
+    <artifactId>spring-dependencies</artifactId>
     <version>1.0.0</version>
-    <name>spring-cloud-dependencies</name>
-    <description>Demo project for Spring Cloud</description>
+    <name>spring-dependencies</name>
+    <description>Demo project for Spring Cloud And Spring Boot</description>
     <packaging>pom</packaging>
 
     <properties>
