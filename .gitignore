@@ -11,10 +11,4 @@ target/
 *.ipr
 
 ### spring-cloud-dependencies ###
-/spring-cloud-netflix/spring-cloud-client-one/.mvn/
-/spring-cloud-netflix/spring-cloud-client-two/.mvn/
-/spring-cloud-netflix/spring-cloud-eureka-server/.mvn/
-/spring-cloud-netflix/spring-cloud-eureka-client/.mvn/
-/spring-cloud-consul/.mvn/
-/spring-cloud-alibaba/spring-cloud-nacos/.mvn/
-/spring-cloud-alibaba/spring-cloud-sentinel/.mvn/
+/**/**/.mvn/
