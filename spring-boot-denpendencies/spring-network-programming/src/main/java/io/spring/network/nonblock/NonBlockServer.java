@@ -2,70 +2,100 @@ package io.spring.network.nonblock;
 
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 /**
  * @author xiaokexiang
- * @since 2020/11/23
- * BIO server： 利用线程池实现同时处理多个客户端
+ * @since 2020/11/24
+ * 基于jdk原生的 new-IO(也可以理解为Non-IO)
  */
 @Slf4j
 public class NonBlockServer {
 
-    private static final ExecutorService EXECUTOR_SERVICE = Executors.newFixedThreadPool(4);
-    private ServerSocket server;
+    private Selector selector;
 
     public NonBlockServer(int port) {
-        synchronized (NonBlockServer.class) {
-            try {
-                server = new ServerSocket(port);
-            } catch (IOException e) {
-                throw new RuntimeException(e.getMessage());
-            }
+        try {
+            // 开启server channel
+            ServerSocketChannel serverChannel = ServerSocketChannel.open();
+            // 配置非阻塞模式
+            serverChannel.configureBlocking(false);
+            // 生成socket连接
+            ServerSocket socket = serverChannel.socket();
+            // 绑定端口号
+            socket.bind(new InetSocketAddress(port));
+            log.info("NIO Socket Server Listening on port: {}", port);
+            // 开启事件轮询器
+            this.selector = Selector.open();
+            // 将channel注册到selector上
+            serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
     public void start() {
-        log.info("Server Socket waiting for connecting ... ");
-        while (true) {
-            try {
-                // 阻塞直到连接建立，会生成新的socket
-                Socket socket = server.accept();
-                log.info("Client port: {} has connected ...", socket.getPort());
-                EXECUTOR_SERVICE.execute(() -> {
-                    try {
-                        InputStream inputStream = socket.getInputStream();
-                        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-                        String input;
-                        while (null != (input = bufferedReader.readLine())) {
-                            if (input.equals("done")) {
-                                log.info("Receive close command from client: {} !", socket.getPort());
-                                break;
-                            }
-                            log.info("Receive message from client: {}, message: {}", socket.getPort(), input);
+        try {
+            // 轮询等待IO操作的channel
+            while (selector.select() > 0) {
+                // 处理轮询器轮询到的channels
+                // selectionKey 会在channel注册到channel上的时候被创建，类似身份标识符，代表注册到选择器的channel
+                for (SelectionKey selectionKey : selector.selectedKeys()) {
+
+                    // 判断channel是否能够接受新的socket连接
+                    if (selectionKey.isAcceptable()) {
+                        log.info("channel selectKey: {} has accept a new socket connection ...", selectionKey);
+                        // 返回selectionKey对应的channel
+                        ServerSocketChannel socketChannel = (ServerSocketChannel) selectionKey.channel();
+                        if (null == socketChannel) {
+                            continue;
                         }
-                    } catch (IOException e) {
-                        throw new RuntimeException(e.getMessage());
+                        // 接受channel中的新连接
+                        SocketChannel channel = socketChannel.accept();
+                        if (null == channel) {
+                            continue;
+                        }
+                        channel.configureBlocking(false);
+                        // 等待输入的时候选择继续监听其他socket的
+                        channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+                        // 返回新的数据
+                        ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
+                        byteBuffer.put("I'm NIO Server".getBytes());
+                        byteBuffer.flip();
+                        channel.write(byteBuffer);
                     }
 
-                });
-            } catch (IOException e) {
-                throw new RuntimeException(e.getMessage());
+                    // 判断是否有client发送数据过来
+                    if (selectionKey.isReadable()) {
+                        log.info("channel selectKey: {} has read data from client ...", selectionKey);
+                        // 和上面类似，获取对应的client channel
+                        SocketChannel socketChannel = (SocketChannel) selectionKey.channel();
+                        ByteBuffer readBuffer = ByteBuffer.allocate(1024);
+                        readBuffer.clear();
+                        socketChannel.read(readBuffer);
+                        readBuffer.flip();
+
+                        String data = Charset.forName(StandardCharsets.UTF_8.name()).decode(readBuffer).toString();
+                        log.info("receive data from client, data: {}", data);
+                    }
+                }
             }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
     public static void main(String[] args) {
-        NonBlockServer nonBlockServer = new NonBlockServer(8081);
+        NonBlockServer nonBlockServer = new NonBlockServer(8001);
         nonBlockServer.start();
-
     }
 }
-

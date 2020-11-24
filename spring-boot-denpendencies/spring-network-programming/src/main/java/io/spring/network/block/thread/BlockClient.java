@@ -1,4 +1,4 @@
-package io.spring.network.nonblock;
+package io.spring.network.block.thread;
 
 import java.io.BufferedReader;
 import java.io.IOException;

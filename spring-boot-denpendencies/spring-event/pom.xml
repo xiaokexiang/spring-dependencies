@@ -8,7 +8,7 @@
         <version>1.0.0</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <artifactId>event</artifactId>
+    <artifactId>spring-event</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <name>event</name>
     <description>Demo project for Spring Event</description>
