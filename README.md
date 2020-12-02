@@ -4,8 +4,8 @@
 
 - spring-boot-datasource
 - spring-event
-- spring-network-programming
-<a href="../spring-boot-denpendencies/spring-network-programming/README.md">Netty</a>
+- <a href="./spring-boot-denpendencies/spring-network-programming/README.md">spring-network-programming</a>
+
 ---
 
 ### spring-cloud-dependencies
