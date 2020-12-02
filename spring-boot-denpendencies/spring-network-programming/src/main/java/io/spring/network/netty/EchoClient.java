@@ -33,7 +33,8 @@ public class EchoClient {
                     .handler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel ch) {
-                            ch.pipeline().addLast(new EchoClientHandler());
+                            // 添加多个ChannelHandler
+                            ch.pipeline().addLast(new EchoClientHandlerFirst(), new EchoClientHandler(), new EchoClientHandlerLast());
                         }
                     });
 

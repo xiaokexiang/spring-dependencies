@@ -19,13 +19,14 @@ public class EchoClientHandler extends SimpleChannelInboundHandler<ByteBuf> {
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
         // channel是活跃时被调用
-        ctx.writeAndFlush(Unpooled.copiedBuffer("Netty Rock", CharsetUtil.UTF_8));
+        ctx.writeAndFlush(Unpooled.copiedBuffer("Client Msg Coming ...".getBytes()));
     }
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) {
         // client接收到信息时被调用
-        log.info("Client received: {}", msg.toString());
+        log.info("EchoClientHandler received: {}", msg.toString(CharsetUtil.UTF_8));
+        ctx.fireChannelRead(Unpooled.copiedBuffer(msg));
     }
 
     @Override

@@ -8,6 +8,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.nio.charset.StandardCharsets;
+
 /**
  * @author xiaokexiang
  * @see io.netty.channel.ChannelHandler 实现服务器对客户端接收的数据的业务逻辑的处理
@@ -20,13 +22,14 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         ByteBuf in = (ByteBuf) msg;
-        log.info("Server received message: {}", in.toString());
-        ctx.write(in);
+        log.info("Server received message: {}", in.toString(StandardCharsets.UTF_8));
     }
 
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
-        ctx.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
+        String msg = "Server Msg Coming ...";
+        log.info("Server Channel Read Complete, send message: {}", msg);
+        ctx.writeAndFlush(Unpooled.copiedBuffer(msg.getBytes())).addListener(ChannelFutureListener.CLOSE);
     }
 
     @Override
