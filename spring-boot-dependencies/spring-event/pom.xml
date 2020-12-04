@@ -10,7 +10,7 @@
     </parent>
     <artifactId>spring-event</artifactId>
     <version>1.0.0-SNAPSHOT</version>
-    <name>event</name>
+    <name>spring-event</name>
     <description>Demo project for Spring Event</description>
 
     <properties>
