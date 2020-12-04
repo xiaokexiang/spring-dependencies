@@ -20,6 +20,11 @@ import java.nio.charset.StandardCharsets;
 public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        super.channelActive(ctx);
+    }
+
+    @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         ByteBuf in = (ByteBuf) msg;
         log.info("Server received message: {}", in.toString(StandardCharsets.UTF_8));
