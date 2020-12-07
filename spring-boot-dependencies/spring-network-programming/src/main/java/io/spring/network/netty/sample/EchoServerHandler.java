@@ -1,4 +1,4 @@
-package io.spring.network.netty;
+package io.spring.network.netty.sample;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;

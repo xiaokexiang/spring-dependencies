@@ -207,3 +207,170 @@ ServerBootstrap bootstrap = new ServerBootstrap();// server
 
 ### ByteBuf
 
+**`ByteBuf`**是基于JDK原生的`ByteBuffer`封装而来的字节容器。通过`ByteBuf`抽象类和`ByteBufHolder`接口进行暴露。具有`自定义缓冲区类型扩展`、`基于零拷贝`、`按需增长`、`读写使用不同的索引`、`支持池化`等优点。
+
+#### ByteBuf类
+
+ByteBuf维护了两个不同的索引：读索引 & 写索引（这与ByteBuffer类不同，它只维护了一个索引），初始情况两者都为0，且不应超过capacity。ByteBuf可以指定一个初始容量，但最大不超过`Integer.MAX_VALUE`，内置的API中`以Read、Write开头的方法会推动索引变化，而get、set开头的则不会`。
+
+##### ByteBuf的使用模式
+
+- 堆缓冲区
+
+将数据存储在JVM的堆空间中，又被称为`支撑数组`。其能在没有池化的情况下提供快速的分配与释放，适合有遗留数据需要处理的情况。
+
+```java
+public void dump() {
+    ByteBuf byteBuf = ...;
+    if (byteBuf.hasArray()) { // 判断是否有支撑数组
+        byte[] array = byteBuf.array(); // 若有就获取该数组的引用
+        int offset = byteBuf.arrayOffset() + byteBuf.readerIndex();  // 计算第一个字节的偏移量
+        int length = byteBuf.readableBytes(); // 计算可读字节的长度
+    }
+}
+```
+
+- 直接缓冲区
+
+自JDK1.4后允许JVM调用本地方法(native)来分配堆外内存(又称为直接内存)。主要是为了避免`I/O操作前后将缓冲区内容复制到一个中间缓冲区`。相比于`堆内缓冲区`，`直接缓冲区`的分配和释放都是昂贵的。
+
+```java
+public void direct() {
+    ByteBuf directBuffer = Unpooled.directBuffer(16);
+    if (!directBuffer.hasArray()) { // 判断是否有支撑数组
+        // 还未读的字节大小
+        int length = directBuffer.readableBytes();
+        byte[] array = new byte[length];
+        // 获取剩下的未读数据
+        directBuffer.getBytes(directBuffer.readerIndex(), array);
+    }
+}
+```
+
+- 复合缓冲区
+
+是多个`ByteBuf`的一个聚合视图，是JDK原生所没有的功能。此类型可以同时包含堆内缓冲区和直接缓冲区，如果只有一个ByteBuf的实例，那么`hasArray()`会返回该实例的`hasArray()`的值，否则返回false。
+
+```java
+public void composite() {
+    CompositeByteBuf compositeByteBuf = Unpooled.compositeBuffer();
+    // 添加堆内和堆外两种模式的数据
+    compositeByteBuf.addComponents(
+        Unpooled.directBuffer(16), Unpooled.copiedBuffer("Hello".getBytes()));
+}
+```
+
+#### ByteBuf字节操作
+
+![](https://image.leejay.top/FlQi0WTAq7pvHL8xIgMUQIYrPqcf)
+
+> 1. 初始状态下：`readIndex = writeIndex = 0`，若`readIndex | writeIndex > capacity-1`或`readIndex > WriteIndex`，则会抛出`indexOutOfBoundException`。
+> 2. 可丢弃字节，可以理解为已读字节，`[0, readIndex]`部分的字节已被全部读取，`(readIndex, writeIndex]`部分的字节可以被读取，`(writeIndex，capacity)`部分的字节尚未被写入。
+> 3. 调用`discardReadBytes()`方法后会丢弃`已读字节`并回收他们，此时`readIndex`会被移动到缓冲区的开始位置。
+> 4. `get/set`开头的方法不会修改index的位置，而`read/write`则会修改。
+
+##### 派生缓冲区
+
+```java
+public void test() {
+    // slice类似String的slice切分
+    ByteBuf byteBuf = Unpooled.copiedBuffer("Netty in Action rocks!", CharsetUtil.UTF_8);
+    ByteBuf sliceBuf = byteBuf.slice(0, 15);
+    byteBuf.setByte(0, 'J');
+    System.out.println(byteBuf.getByte(0) == sliceBuf.getByte(0));// true
+
+    // copy方法会复制一份缓冲区的真是副本，复制出的ByteBuf具有独立的数据副本
+    ByteBuf copyBuf = byteBuf.copy();
+    byteBuf.setByte(0, 'N');
+    System.out.println(byteBuf.getByte(0) == copyBuf.getByte(0));// false
+
+    // duplicate返回一个新的ByteBuf实例，但是readIndex & writeIndex都是与原ByteBuf共享的
+    ByteBuf duplicate = byteBuf.duplicate();
+    byteBuf.setByte(0, 'J');
+    System.out.println(byteBuf.getByte(0) == duplicate.getByte(0));// true
+
+    // print 'J' index of byteBuf: 0
+    System.out.println(byteBuf.indexOf(0, 15, "J".getBytes()[0]));
+}
+```
+
+> 非特殊需要，`slice()`方法能满足就用该方法，避免`复制`带来的内存开销。
+
+#### ByteBufHolder接口
+
+`ByteBuf`的容器，为了满足除了基本的`ByteBuf`数据负载外，还要满足类似`HTTP`响应返回的各种属性值，`ByteBufHolder`包含`一个ByteBuf对象`，可以按需实现不同的需求。
+
+```java
+DefaultByteBufHolder byteBufHolder = new DefaultByteBufHolder(
+    													Unpooled.copiedBuffer("hello".getBytes()));
+```
+
+#### ByteBuf分配
+
+##### ByteBufAllocator
+
+Netty基于ByteBufAllocator接口实现了ByteBuf的`池化`，它可以分配任意类型的ByteBuf实例。
+
+```java
+public void alloc() {
+    // Netty默认的分配
+    ByteBufAllocator allocator = new PooledByteBufAllocator();
+    allocator.buffer(); //堆或直接缓冲区
+    allocator.heapBuffer(); // 堆内缓冲区
+    allocator.directBuffer(); // 直接缓冲区
+    allocator.compositeBuffer(); // 复合缓冲区
+}
+```
+
+> Netty默认使用`PooledByteBufAllocator`类作为分配的规则。但也提供了`UnpooledByteBufAllocator`。前者`池化`了ByteBuf实例以提高性能并最大程度减少内存碎片，后者则`不池化`ByteBuf实例，每次调用都返回一个新的实例。
+
+我们还可以通过`Channel`对象或绑定到Channel的`ChannelHandlerContext`来获取`ByteBufAllocator`的引用。
+
+```java
+public interface ChannelHandlerContext extends AttributeMap, 
+											   ChannelInboundInvoker, ChannelOutboundInvoker {
+  	ByteBufAllocator alloc();
+}
+```
+
+##### Unpooled缓冲区
+
+```java
+public void unPool() {
+    Unpooled.copiedBuffer("Hello".getBytes());
+    Unpooled.directBuffer();
+    Unpooled.buffer();
+    Unpooled.wrappedBuffer("Hello".getBytes());
+}
+```
+
+> copiedBuffer()与wrappedBuffer()的区别在于：前者会生成一个`新的完全独立`的ByteBuf，而后者与传入的byte[]仍是共享的(类似duplicate()。且它们底层是创建`堆内`缓冲区。
+
+##### ByteBufUtil
+
+用于操作ByteBuf的静态方法，和池化无关，可单独使用。常用的有`equals（比较两个ByteBuf是否相等）`、`hexDump（返回ByteBuf的十六进制内容）`等。
+
+##### 引用计数法
+
+在Netty的池化中，存有一个重要的概念：`引用计数法`，只要该实例的引用大于0，就不会被释放，如果引用降低到0，那该实例就会被释放。一般由最后访问的该实例的那一方负责释放。
+
+```java
+public interface ReferenceCounted {
+    int refCnt();
+    ReferenceCounted retain();
+    ReferenceCounted retain(int increment);
+    ReferenceCounted touch();
+    ReferenceCounted touch(Object hint);
+    boolean release();
+    boolean release(int decrement);
+}
+```
+
+#### ByteBuf总结
+
+![](https://image.leejay.top/Fs8QHe15SgVPrHy60QimS6HBGYTt)
+
+---
+
+### ChannelHandler & ChannelPipeline
+

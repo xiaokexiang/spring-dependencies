@@ -1,4 +1,4 @@
-package io.spring.network.netty;
+package io.spring.network.netty.sample;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelFuture;
