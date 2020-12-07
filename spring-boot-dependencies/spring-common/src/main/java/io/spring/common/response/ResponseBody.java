@@ -49,6 +49,14 @@ public class ResponseBody<T> {
                 .time();
     }
 
+    public static <T> ResponseBody<T> error(String message) {
+        return new ResponseBody<T>()
+                .code(500)
+                .data(null)
+                .message(message)
+                .time();
+    }
+
     enum Prompt {
         SUCCESS("Request Succeeded"),
         FAILED("Request Failed");
