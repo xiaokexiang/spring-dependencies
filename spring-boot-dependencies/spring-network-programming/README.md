@@ -374,3 +374,284 @@ public interface ReferenceCounted {
 
 ### ChannelHandler & ChannelPipeline
 
+#### ChannelHandler生命周期
+
+![](https://image.leejay.top/FjS0ITByNINX_7YdfLPRgAVgkWdr)
+
+##### ChannelHandlerAdapter
+
+`ChannelInboudHandler & ChannelOutboundHandler`都继承了该类，在`ChannelHandler加入ChannelPipeline或被移除时`被调用。
+
+```java
+public abstract class ChannelHandlerAdapter implements ChannelHandler {
+
+    // 只作用于健康检查，所以不适用volatile修饰
+    boolean added;
+
+    // 如果isSharable()为true就抛出IllegalStateException}异常
+    protected void ensureNotSharable() {
+        if (isSharable()) {
+            throw new IllegalStateException("ChannelHandler " + getClass().getName() + " is not allowed to be shared");
+        }
+    }
+
+    // 判断ChannelHandlerAdapter的子类是否可共享的
+    public boolean isSharable() {
+        Class<?> clazz = getClass();
+        // 基于ThreadLocal实现，WeakHashMap
+        // @link https://leejay.top/post/threadlocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F/
+        Map<Class<?>, Boolean> cache = InternalThreadLocalMap.get().handlerSharableCache();
+        Boolean sharable = cache.get(clazz);
+        if (sharable == null) {
+            // 如果value不存在，那么判断该类是否有Sharable注解
+            sharable = clazz.isAnnotationPresent(Sharable.class);
+            // 将结果保存到ThreadLocalMap中
+            cache.put(clazz, sharable);
+        }
+        return sharable;
+    }
+
+    // 加入ChannelPipeline时触发
+    @Override
+    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+    }
+
+    // 被ChannelPipeline移除时触发
+    @Override
+    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+    }
+
+    // 调用ChannelHandlerContext#fireExceptionCaught传递到下一个ChannelHandler
+    @Skip
+    @Override
+    @Deprecated
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        ctx.fireExceptionCaught(cause);
+    }
+}
+```
+
+- 处理入站异常
+
+```java
+@Slf4j
+@ChannelHandler.Sharable
+public class MyChannelInboundHandler extends ChannelInboundHandlerAdapter {
+	@Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        cause.printStackTrace(); // 打印堆栈信息
+        ctx.close(); // 关闭channel连接
+    }
+}
+```
+
+> 默认情况下，会将当前异常转发给下一个ChannelHandler，如果当前ChannelHandler已是最后一个Handler，如果不处理则会被Netty记录并打印Warning日志。
+
+- 出站异常
+
+出站异常，不再使用类似入站异常`exceptionCaught()`的模式，而是有两种方式可以选择。
+
+```java
+// 1. 添加监听器到ChannelFuture
+ChannelFuture future = bootstrap.bind().sync();
+future.channel().write("Hello").addListener((ChannelFutureListener) f -> {
+    if (!f.isSuccess()) {
+        f.cause().printStackTrace();
+        f.channel().close();
+    }
+});
+
+// 2. 在ChannelOutboundHandler#write()时处理
+@Slf4j
+@ChannelHandler.Sharable
+public class MyChannelInboundHandler extends ChannelInboundHandlerAdapter {
+    @Override
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+        // 请求通过Channel将数据写到远程节点时被调用
+        promise.addListener((ChannelFutureListener) future -> {
+            if (!future.isSuccess()) {
+                future.cause().printStackTrace();
+                future.channel().close();
+            }
+        });
+    }
+}
+```
+
+##### ChannelInboudHandler
+
+作用于`数据被接收时`或与其`对应的channel状态改变`时被调用。一般通过继承`ChannelInboundHandler`来实现自定义的ChannelHandler，但是需要我们显示的`释放与池化的ByteBuf实例相关的内存`。
+
+```java
+@Slf4j
+@ChannelHandler.Sharable
+public class MyChannelInboundHandler extends ChannelInboundHandlerAdapter {
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        ReferenceCountUtil.release(msg);
+    }
+
+    @Override
+    public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        log.info("channelRegistered ...");
+    }
+
+    @Override
+    public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
+        log.info("channelUnregistered ...");
+    }
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        log.info("channelActive ...");
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        log.info("channelInactive ...");
+    }
+
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+        log.info("channelReadComplete ...");
+    }
+
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        log.info("userEventTriggered ...");
+    }
+
+    @Override
+    public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+        log.info("channelWritabilityChanged ...");
+    }
+}
+```
+
+> `@Sharable`起到一个标识符的作用，表明其修饰的ChannelHandler能够被多个ChannelPipeline安全的共享。但并不代表被修饰的ChannelHandler就一定线程安全。
+
+但是我们更推荐使用`SimpleChannelInboundHandler<T>`，因为该类内置了释放内存的相关代码。
+
+```java
+public abstract class SimpleChannelInboundHandler<I> extends ChannelInboundHandlerAdapter {
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        boolean release = true;
+        try {
+            if (acceptInboundMessage(msg)) {
+                @SuppressWarnings("unchecked")
+                I imsg = (I) msg;
+                channelRead0(ctx, imsg);// 调用子类的channelRead0方法
+            } else {
+                release = false; // 如果不需要释放内存，那么就
+                ctx.fireChannelRead(msg);
+            }
+        } finally {
+            // 如果autoRelease为true，且处理了该msg，那么则需要释放资源
+            if (autoRelease && release) {
+                ReferenceCountUtil.release(msg);
+            }
+        }
+    }
+}
+```
+
+> 核心逻辑：判断是否需要处理该msg，如果需要那么对数据进行转换并调用`子类的channelRead0()`，不需要处理则将msg交给ChannelPipeline中的`下一个channelHandler`。
+>
+> 不管是否对数据进行处理，都最终会调用`ReferenceCountUtil.release(msg)`来释放池化的资源。
+>
+> 我们需要避免`存储指向任何消息的引用`，因为消息资源最终会被释放。
+
+Netty内置了`ResourceLeakDetector类`来对应用程序进行内存泄漏检测。
+
+| 级别         | 描述                                                         |
+| ------------ | ------------------------------------------------------------ |
+| **DISBALED** | 禁用泄露检测                                                 |
+| **SIMPLE**   | 使用1%的默认采样率检测并报告任何发现的泄露（默认）           |
+| **ADVANCED** | 使用默认的采样率，报告发现的任何泄露和对应消息被访问的位置   |
+| **PARANOID** | 类似**ADVANCED**，但每次都会对消息的访问进行采样，会影响性能 |
+
+> `java -Dio.netty.leakDetectionLevel=ADVANCED`
+
+##### ChannelOutboundHandler
+
+```java
+@ChannelHandler.Sharable
+public class MyChannelOutboundHandler extends ChannelOutboundHandlerAdapter {
+
+    @Override
+    public void bind(ChannelHandlerContext ctx, 
+                     SocketAddress localAddress, 
+                     ChannelPromise promise) throws Exception {
+        // Channel绑定到本地地址触发
+    }
+
+    @Override
+    public void connect(ChannelHandlerContext ctx, 
+                        SocketAddress remoteAddress, 
+                        SocketAddress localAddress, 
+                        ChannelPromise promise) throws Exception {
+        // Channel连接到远端时触发
+    }
+
+    @Override
+    public void disconnect(ChannelHandlerContext ctx, ChannelPromise promise) throws Exception {
+        // Channel从远端节点断开时调用
+    }
+
+    @Override
+    public void close(ChannelHandlerContext ctx, ChannelPromise promise) throws Exception {
+        // 请求关闭Channel时被调用
+    }
+
+    @Override
+    public void deregister(ChannelHandlerContext ctx, ChannelPromise promise) throws Exception {
+        // 从EventLoop上注销时被调用
+    }
+
+    @Override
+    public void read(ChannelHandlerContext ctx) throws Exception {
+        // 从Channel上读取更多数据时被调用
+    }
+
+    @Override
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+        // 请求通过Channel将数据写到远程节点时被调用
+    }
+
+    @Override
+    public void flush(ChannelHandlerContext ctx) throws Exception {
+        // Channel将数据刷到远程节点被调用
+    }
+}
+```
+
+> ChannelPromise是`ChannelFuture(基于Future的子类)`的子类，用于在操作完成时得到通知。当Promise被完成之后，那么Future则不能进行任何修改。
+
+#### ChannelPipeline
+
+ChannelPipeline是存储ChannelHandler链的容器，每个新创建的ChannelHandler都会被分配一个新的ChannelPipeline。当执行ChannelPipeline中的ChannelHandler链时，Netty会默认的判断当前类型是否与事件运行方向一致（入站或出站）。
+
+```java
+public interface ChannelPipeline
+        extends ChannelInboundInvoker, 
+				ChannelOutboundInvoker, Iterable<Entry<String, ChannelHandler>> {
+    ChannelPipeline addFirst(ChannelHandler... handlers);
+    ChannelPipeline addLast(ChannelHandler... handlers);
+    ChannelPipeline remove(ChannelHandler handler);
+    ...
+}
+```
+
+> ChannelPipeline可以根据需要，动态的添加或删除ChannelHandler。且可以响应入站和出站事件。
+
+#### ChannelHandlerContext
+
+ChannelHandlerContext代表了ChannelHandler和ChannelPipeline之间的关联，每有一盒ChannelHandler添加创建到Pipeline，都会创建ChannelHandlerContext与之关联，且`它们之间的关联永不会变`。
+
+![](https://image.leejay.top/FjKwRQeXB8Lo0Yh-6vNRkb0Qyyue)
+
+> 1. Channel与ChannelPipeline绑定，ChannelPipeline包含多个ChannelHandler，一个ChannelHandler可以属于多个不同的ChannelPipeline，`每个ChannelHandler都有唯一一个ChannelHandlerContext与之对应`。
+>
+> 2. 通过Channel发送消息会从`ChannelPipeline的头开始流动`，如果通过某个ChannelHandler的ChannelHandlerContext发送消息，那么会`从该ChannelHandler的下个ChannelHandler`开始流动。
