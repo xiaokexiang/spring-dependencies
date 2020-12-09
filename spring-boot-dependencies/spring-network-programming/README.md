@@ -24,6 +24,22 @@ Netty的核心抽象，用于处理连接的生命周期中所发生的事件。
 > 2. 一个EventLoop在其生命周期中只和一个Thread绑定。该EventLoop处理的I/O都在该Thread上被处理。
 > 3. 一个Channel在其生命周期中只会被注册到一个EventLoop中。
 > 4. 一个EventLoop可以被分配个一个或多个Channel。
+> 5. EventLoop执行任务时，会先判断当前`执行任务的线程是否是当前EventLoop的绑定线程`，不是则入队等待下一次处理。
+
+```java
+bootstrap.handle(new ChannelInitializer<SocketChannel>() {
+    @Override
+    protected void initChannel(SocketChannel ch) throws Exception {
+        // 通过channel绑定的eventLoop来实现调度任务
+        ch.eventLoop().scheduleAtFixedRate(
+            () -> log.info("do something ..."),
+            1L,
+            1L,
+            TimeUnit.SECONDS);
+    });
+```
+
+> 使用Channel绑定的EventLoop实现定时任务调度。
 
 #### ChannelFuture
 
@@ -655,3 +671,147 @@ ChannelHandlerContext代表了ChannelHandler和ChannelPipeline之间的关联，
 > 1. Channel与ChannelPipeline绑定，ChannelPipeline包含多个ChannelHandler，一个ChannelHandler可以属于多个不同的ChannelPipeline，`每个ChannelHandler都有唯一一个ChannelHandlerContext与之对应`。
 >
 > 2. 通过Channel发送消息会从`ChannelPipeline的头开始流动`，如果通过某个ChannelHandler的ChannelHandlerContext发送消息，那么会`从该ChannelHandler的下个ChannelHandler`开始流动。
+
+---
+
+### 编解码器
+
+#### 抽象解码器
+
+解码器本质上继承了`ChannelInboundHandlerAdapter`，可以作为`ChannelHandler`加入到`ChannelPipeline`。
+
+- ByteToMessageDecoder
+
+```java
+public class ToIntegerDecoder extends ByteToMessageDecoder {
+    @Override
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+        // 如果可读字节数多于4个，那么将其添加到解码消息的list中
+        if (in.readableBytes() >= 4) {
+            out.add(in.readInt());
+        }
+    }
+}
+```
+
+> 将入站的字节按照长度为4转换为消息
+
+- ReplayingDecoder<T>
+
+```java
+public class ToIntegerDecoder2 extends ReplayingDecoder<Void> {
+    @Override
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+        // 相比实现ByteToMessageDecoder，不需要判断是否存在可读字节，由父类实现
+        out.add(in.readInt());
+    }
+}
+```
+
+> 相比`ByteToMessageDecoder`抽象类，`ReplayingDecoder`不需要额外判断当前是否有字节数可读。
+>
+> `ByteToMessageDecoder`适合处理不复杂的逻辑，如果逻辑复杂建议使用`ReplayingDecoder`。
+
+- MessageToMessageDecoder<T>
+
+```java
+public class IntegerToStringDecoder extends MessageToMessageDecoder<Integer> {
+    @Override
+    protected void decode(ChannelHandlerContext ctx, Integer msg, List<Object> out) throws Exception {
+        out.add(String.valueOf(msg));
+    }
+}
+```
+
+> 将指定类型的消息转换为另一种类型，然后调用下一个`ChannelInboundHandler`。
+
+#### 抽象编码器
+
+编码器本质上实现了`ChannelOutboundHandlerAdapter`，可以作为`ChannelHandler`添加到`ChannelPipeline`。
+
+- MessageToByteEncoder
+
+```java
+public class ShortToByteEncoder extends MessageToByteEncoder<Short> {
+    @Override
+    protected void encode(ChannelHandlerContext ctx, Short msg, ByteBuf out) throws Exception {
+        out.writeShort(msg);
+    }
+}
+```
+
+> 出站过程中将消息转换为`ByteBuf`字节。
+
+- MessageToMessageEncoder<T>
+
+```java
+public class IntegerToStringEncoder extends MessageToMessageEncoder<Integer> {
+    @Override
+    protected void encode(ChannelHandlerContext ctx, Integer msg, List<Object> out) throws Exception {
+        out.add(String.valueOf(msg));
+    }
+}
+```
+
+> 将指定类型的消息转换为另一种类型，然后调用下一个`ChannelOutboundHandler`。
+
+#### 高级抽象编解码器
+
+高级抽象编解码器是对编码、解码器两者的结合，同样是可以作为`ChannelHandler`加入到`ChannelPipeline`中。
+
+- ByteToMessageCodec<T>
+
+```java
+public class MyByteToMessageCodec extends ByteToMessageCodec<Integer> {
+
+    @Override
+    protected void encode(ChannelHandlerContext ctx, Integer msg, ByteBuf out) throws Exception {
+        out.writeByte(msg);
+    }
+
+    @Override
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+        // byte -> Integer
+        if (in.readableBytes() >= 2) {
+            out.add(in.readInt());
+        }
+    }
+}
+```
+
+> `ByteToMessage`编解码器同时包含编码和解码，分别是`入站的解码和出站的编码`。
+
+- MessageToMessageCodec<IN, OUT>
+
+```java
+public class MyMessageToMessageCodec extends MessageToMessageCodec<Integer, String> {
+
+    @Override
+    protected void encode(ChannelHandlerContext ctx, String msg, List<Object> out) throws Exception {
+        out.add(Integer.valueOf(msg));
+    }
+
+    @Override
+    protected void decode(ChannelHandlerContext ctx, Integer msg, List<Object> out) throws Exception {
+        out.add(String.valueOf(msg));
+    }
+}
+```
+
+> `MessageToMessage`编解码器主要是处理入站和出站中的某种消息类型转换为另一种消息类型。
+
+- CombinedChannelDuplexHandler
+
+```java
+public class MyCombinedChannelDuplexHandler extends CombinedChannelDuplexHandler<ToIntegerDecoder, ShortToByteEncoder> {
+
+    public MyCombinedChannelDuplexHandler(ToIntegerDecoder inboundHandler, ShortToByteEncoder outboundHandler) {
+        super(inboundHandler, outboundHandler);
+    }
+}
+```
+
+> `CombinedChannelDuplexHandler`抽象类相比`MessageToMessageCodec`，主要是为了解决编解码器的复用问题，将编解码器作为构造参数传入。
+
+#### 内置的编解码器
+

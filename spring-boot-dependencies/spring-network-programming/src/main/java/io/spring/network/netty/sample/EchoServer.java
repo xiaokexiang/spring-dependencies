@@ -1,16 +1,17 @@
 package io.spring.network.netty.sample;
 
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * @author xiaokexiang
  * @since 2020/11/23
  */
+@Slf4j
 public class EchoServer {
 
     private int port;
@@ -28,6 +29,17 @@ public class EchoServer {
             bootstrap.group(group)
                     .channel(NioServerSocketChannel.class)
                     .localAddress(port)
+                    .handler(new ChannelInitializer<Channel>() {
+                        @Override
+                        protected void initChannel(Channel ch) throws Exception {
+                            ch.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+                                @Override
+                                public void channelActive(ChannelHandlerContext ctx) throws Exception {
+                                    log.info("handler channelActive ...");
+                                }
+                            });
+                        }
+                    })
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel ch) {
