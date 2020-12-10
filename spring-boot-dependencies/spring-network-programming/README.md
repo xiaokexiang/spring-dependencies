@@ -815,3 +815,245 @@ public class MyCombinedChannelDuplexHandler extends CombinedChannelDuplexHandler
 
 #### 内置的编解码器
 
+##### 应用程序连接协议
+
+- Ssl加密解密
+
+```java
+public class SslChannelInitializer extends ChannelInitializer<Channel> {
+    private final SslContext context;
+    private final boolean startTls;
+
+    public SslChannelInitializer(SslContext context, boolean startTls) {
+        this.context = context;
+        this.startTls = startTls;
+    }
+
+    @Override
+    protected void initChannel(Channel ch) throws Exception {
+        SSLEngine sslEngine = context.newEngine(ch.alloc());
+        // SSL/TLS加密解密一般作为第一个handler
+        ch.pipeline().addFirst("ssl", new SslHandler(sslEngine, startTls));
+    }
+}
+```
+
+> 一般将SslHandler作为ChannelPipeline中的第一个handler。
+
+- Http/Https
+
+```java
+public class HttpPipelineInitializer extends ChannelInitializer<Channel> {
+    private final boolean isClient;
+
+    public HttpPipelineInitializer(boolean isClient) {
+        this.isClient = isClient;
+    }
+
+    @Override
+    protected void initChannel(Channel ch) throws Exception {
+        ChannelPipeline pipeline = ch.pipeline();
+        // 因为http是由客户端发起的通信，客户端需要对请求加密，接受服务端的响应解密
+        if (isClient) {
+            pipeline.addLast(new HttpResponseDecoder());
+            pipeline.addLast(new HttpRequestEncoder());
+        } else {
+            // 服务端接受客户端请求需要先解密，返回响应加密
+            pipeline.addLast(new HttpResponseEncoder());
+            pipeline.addLast(new HttpRequestDecoder());
+        }
+    }
+}
+```
+
+> 基于Http是`请求/响应`类型，由客户端发起请求，服务端响应请求，所以客户端需要对请求加密，接受服务端的响应解密，服务端接受客户端请求需要先解密，返回响应加密。
+
+- Http/Https聚合
+
+```java
+public class HttpAggregatorInitializer extends ChannelInitializer<Channel> {
+    private final boolean isClient;
+
+    public HttpAggregatorInitializer(boolean isClient) {
+        this.isClient = isClient;
+    }
+
+    @Override
+    protected void initChannel(Channel ch) throws Exception {
+        ChannelPipeline pipeline = ch.pipeline();
+        if (isClient) {
+            // HttpRequestEncoder + HttpResponseDecoder
+            pipeline.addLast(new HttpClientCodec());
+        } else {
+            // HttpResponseDecoder + HttpRequestEncoder
+            pipeline.addLast(new HttpServerCodec());
+        }
+        // 聚合http，限制不超过512kb
+        pipeline.addLast(new HttpObjectAggregator(512 * 1024));
+    }
+}
+```
+
+> 因为Http/Https的数据是可以分成多个部分传送的，所以我们可以使用聚合得到一个完整的数据。但相对性能要差一些，并且我们可以指定限制`Http content`的大小。
+
+- WebSocket
+
+```java
+public class WebSocketServerInitializer extends ChannelInitializer<Channel> {
+
+    @Override
+    protected void initChannel(Channel ch) throws Exception {
+        ch.pipeline().addLast(
+                new HttpServerCodec(), // 处理http
+                new HttpObjectAggregator(512 * 1024), // 处理http数据聚合
+                new WebSocketServerProtocolHandler("/websocket"), // 处理/websocket路径
+                new TextFrameHandler(), // 处理text格式
+                new BinaryFrameHandler(), // 处理binary格式
+                new ContinuationFrameHandler() // 处理属于上一个binary或text的数据
+        );
+    }
+
+    static final class TextFrameHandler 
+        extends SimpleChannelInboundHandler<TextWebSocketFrame> {
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msg) 
+            throws Exception {
+
+        }
+    }
+
+    static final class BinaryFrameHandler 
+        extends SimpleChannelInboundHandler<BinaryWebSocketFrame> {
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, BinaryWebSocketFrame msg) 
+            throws Exception {
+        }
+    }
+
+    static final class ContinuationFrameHandler 
+        extends SimpleChannelInboundHandler<ContinuationWebSocketFrame> {
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, ContinuationWebSocketFrame msg) 
+            throws Exception {
+        }
+    }
+}
+```
+
+> WebSocket是`基于Http的应用层协议`。在处理WebSocket数据之前，我们需要先使用http相关ChannelHandler处理数据，然后再使用WebSocket相关的channelHandler处理。
+
+##### 连接超时与空闲
+
+- IdleStateHandler
+
+```java
+public class IdleStateHandlerInitializer extends ChannelInitializer<Channel> {
+    @Override
+    protected void initChannel(Channel ch) throws Exception {
+        ChannelPipeline pipeline = ch.pipeline();
+        pipeline.addLast(new IdleStateHandler(0, 0, 60, TimeUnit.SECONDS));
+        pipeline.addLast(new HeartBeatHandler());
+    }
+
+    static class HeartBeatHandler extends ChannelInboundHandlerAdapter {
+        private static final ByteBuf HEARTBEAT_SEQUENCE = Unpooled.unreleasableBuffer(
+                Unpooled.copiedBuffer("HEART_BEAT", CharsetUtil.ISO_8859_1));
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+            // 如果空闲连接时间太长，那么发送心跳事件
+            if (evt instanceof IdleStateEvent) {
+                ctx.writeAndFlush(HEARTBEAT_SEQUENCE.duplicate())
+                        .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+            } else {
+                super.userEventTriggered(ctx, evt);
+            }
+        }
+    }
+}
+```
+
+> 如果连接空闲时间太长，那么我们发送`IdleStateEvent`，在下游的`userEventTriggered`中处理。
+
+- Read/WriteTimeoutHandler
+
+除了`IdleStateHandler`的空闲连接处理，还可以处理`Read/Write`超时问题，需要交给下游的`ChannelHandler`中的`exeptionCaught`方法来处理。
+
+```java
+public class ReadTimeoutHandler extends IdleStateHandler {
+    // 指定读取超时时间
+    public ReadTimeoutHandler(int timeoutSeconds) {
+        this(timeoutSeconds, TimeUnit.SECONDS);
+    }
+}
+
+public class WriteTimeoutHandler extends ChannelOutboundHandlerAdapter {
+    public WriteTimeoutHandler(int timeoutSeconds) {
+        this(timeoutSeconds, TimeUnit.SECONDS);
+    }
+}
+```
+
+##### 基于分隔符的解码器
+
+- LineBasedFrameDecoder
+
+```java
+public class LineBasedHandlerInitializer extends ChannelInitializer<Channel> {
+    @Override
+    protected void initChannel(Channel ch) throws Exception {
+        // 行尾符分割并限制最大长度
+        ch.pipeline().addLast(new LineBasedFrameDecoder(64 * 1024), new FrameHandler());
+    }
+
+    static final class FrameHandler extends SimpleChannelInboundHandler<ByteBuf> {
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
+        }
+    }
+}
+```
+
+- DelimiterBasedFrameDecoder
+
+相比`LineBasedFrameDecoder`，`DelimiterBasedFrameDecoder`的性能要稍低，它是使用用户指定的分隔符来提取帧的通用解码器。
+
+##### 基于长度的解码器
+
+- FixedLengthFrameDecoder
+
+每次解码都按照一定的长度进行解码，长度是在创建的时候通过构造函数指定的。
+
+```java
+public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
+	public FixedLengthFrameDecoder(int frameLength) {
+        checkPositive(frameLength, "frameLength");
+        this.frameLength = frameLength;
+    }
+}
+```
+
+- LengthFieldBasedFrameDecoder
+
+```java
+public class LengthBasedInitializer extends ChannelInitializer<Channel> {
+    @Override
+    protected void initChannel(Channel ch) throws Exception {
+        ch.pipeline().addLast(
+                // 最大长度，字段编码起始地址，长度编码长度
+                new LengthFieldBasedFrameDecoder(64 * 1024, 0, 8),
+                new FrameHandler());
+    }
+
+    static final class FrameHandler extends SimpleChannelInboundHandler<ByteBuf> {
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
+        }
+    }
+}
+```
+
+> 相比`FixedLengthFrameDecoder`，`LengthFieldBasedFrameDecoder`可以指定长度编码的起始位置和编码长度，更加的灵活，适合每次长度都不同的情况。
+
+---
+
