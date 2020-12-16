@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: jdbc:mysql://172.19.18.161:3316/test
+    username: bocloud
+    password: a@!#123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 1
+      connection-timeout: 3000
+      connection-test-query: SELECT 1
+    type: com.zaxxer.hikari.HikariDataSource
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    default-statement-timeout: 30

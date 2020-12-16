@@ -213,7 +213,7 @@ ServerBootstrap bootstrap = new ServerBootstrap();// server
 
 |          | Channel                  | EventLoopGroup      | 支持协议         | 使用需求                   |
 | -------- | ------------------------ | ------------------- | ---------------- | -------------------------- |
-| NIO      | NioServerSocketChannel   | NioEventLoopGroupNi | TCP/UDP/SCTP/UDT | 代码库中没有非阻塞调用     |
+| NIO      | NioServerSocketChannel   | NioEventLoopGroup | TCP/UDP/SCTP/UDT | 代码库中没有非阻塞调用     |
 | Epoll    | EpollServerSocketChannel | EpollEventLoopGroup | TCP/UDP          | 相比NIO，在Linux上推荐使用 |
 | OIO      | OioServerSocketChannel   | OioEventLoopGroup   | TCP/UDP/SCTP/UDT | 阻塞代码库（JDBC等）       |
 | Local    | LocalServerChannel       | LocalEventLoopGroup | -                | 同一个JVM内部的通信        |
