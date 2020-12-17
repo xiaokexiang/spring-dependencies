@@ -12,7 +12,7 @@ public class User {
     private Integer id;
     private String name;
 
-    private User(Builder builder) {
+    public User(Builder builder) {
         this.id = builder.id;
         this.name = builder.name;
     }

@@ -13,7 +13,7 @@ import java.util.List;
  */
 @Mapper
 @Repository
-public interface UserMapper {
+public interface UserDao {
 
     @Select("SELECT * FROM user")
     List<User> select();

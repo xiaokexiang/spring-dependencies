@@ -2,8 +2,8 @@ package io.spring.mybatis;
 
 import io.spring.mybatis.entity.Role;
 import io.spring.mybatis.entity.User;
-import io.spring.mybatis.mapper.RoleMapper;
-import io.spring.mybatis.mapper.UserMapper;
+import io.spring.mybatis.mapper.RoleDao;
+import io.spring.mybatis.mapper.UserDao;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -19,19 +19,19 @@ import java.util.List;
 public class SpringMybatisApplication {
 
     @Resource
-    private UserMapper userMapper;
+    private UserDao userDao;
 
     @Resource
-    private RoleMapper roleMapper;
+    private RoleDao roleDao;
 
     @GetMapping("/users")
     public List<User> selectUsers() {
-        return userMapper.select();
+        return userDao.select();
     }
 
     @GetMapping("/roles")
     public List<Role> selectRoles() {
-        return roleMapper.select();
+        return roleDao.selectAll();
     }
 
     public static void main(String[] args) {
