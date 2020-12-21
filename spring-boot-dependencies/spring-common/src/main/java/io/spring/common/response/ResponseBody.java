@@ -1,15 +1,22 @@
 package io.spring.common.response;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
  * @author xiaokexiang
- * @since 2020/12/4
+ * @since 2020/12/7
+ * 基于Java builder实现
  */
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ResponseBody<T> {
 
     private Integer code;
@@ -17,58 +24,16 @@ public class ResponseBody<T> {
     private T data;
     private String time;
 
-    private ResponseBody<T> self() {
-        return this;
-    }
-
-    public ResponseBody<T> code(Integer code) {
-        this.code = code;
-        return self();
-    }
-
-    public ResponseBody<T> message(String message) {
-        this.message = message;
-        return self();
-    }
-
-    public ResponseBody<T> data(T data) {
-        this.data = data;
-        return self();
-    }
-
-    private ResponseBody<T> time() {
-        this.time = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        return self();
+    private static String now() {
+        return LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
     }
 
     public static <T> ResponseBody<T> ok(T data) {
-        return new ResponseBody<T>()
+        return ResponseBody.<T>builder()
                 .code(200)
                 .data(data)
-                .message(Prompt.SUCCESS.getInfo())
-                .time();
-    }
-
-    public static <T> ResponseBody<T> error(String message) {
-        return new ResponseBody<T>()
-                .code(500)
-                .data(null)
-                .message(message)
-                .time();
-    }
-
-    enum Prompt {
-        SUCCESS("Request Succeeded"),
-        FAILED("Request Failed");
-
-        private String info;
-
-        Prompt(String info) {
-            this.info = info;
-        }
-
-        public String getInfo() {
-            return info;
-        }
+                .message(ResponseBodyLocal.Prompt.SUCCESS.getInfo())
+                .time(now())
+                .build();
     }
 }

@@ -12,3 +12,4 @@ target/
 
 ### spring-cloud-dependencies ###
 /**/**/.mvn/
+Images/**

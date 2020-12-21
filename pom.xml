@@ -23,6 +23,7 @@
         <lombok.version>1.18.16</lombok.version>
         <fastjson.version>1.2.75</fastjson.version>
         <mybatis.version>2.1.4</mybatis.version>
+        <commons.io.version>2.6</commons.io.version>
     </properties>
 
     <dependencyManagement>
@@ -67,6 +68,11 @@
                 <groupId>org.mybatis.spring.boot</groupId>
                 <artifactId>mybatis-spring-boot-starter</artifactId>
                 <version>${mybatis.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons.io.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
