@@ -36,4 +36,13 @@ public class ResponseBody<T> {
                 .time(now())
                 .build();
     }
+
+    public static <T> ResponseBody<T> error(T data) {
+        return ResponseBody.<T>builder()
+                .code(500)
+                .data(data)
+                .message(ResponseBodyLocal.Prompt.FAILED.getInfo())
+                .time(now())
+                .build();
+    }
 }
