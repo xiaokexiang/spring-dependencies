@@ -1,9 +1,8 @@
 package io.spring.common.response;
 
-import lombok.Data;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import lombok.Data;
 
 /**
  * @author xiaokexiang
@@ -43,18 +42,18 @@ public class ResponseBodyLocal<T> {
 
     public static <T> ResponseBodyLocal<T> ok(T data) {
         return new ResponseBodyLocal<T>()
-                .code(200)
-                .data(data)
-                .message(Prompt.SUCCESS.getInfo())
-                .time();
+            .code(200)
+            .data(data)
+            .message(Prompt.SUCCESS.getInfo())
+            .time();
     }
 
     public static <T> ResponseBodyLocal<T> error(String message) {
         return new ResponseBodyLocal<T>()
-                .code(500)
-                .data(null)
-                .message(message)
-                .time();
+            .code(500)
+            .data(null)
+            .message(message)
+            .time();
     }
 
     enum Prompt {
