@@ -4,7 +4,7 @@
 
 - spring-boot-datasource
 - spring-event
-- <a href="./spring-boot-denpendencies/spring-network-programming/README.md">spring-network-programming</a>
+- <a href="./spring-boot-dependencies/spring-network-programming/README.md ">spring-network-programming</a>
 
 ---
 
@@ -19,3 +19,9 @@
 - spring-cloud-alibaba-sentinel
 #### spring-cloud-other
 - spring-cloud-consul
+
+## other
+
+- <a href="./xmind/Mysql.xmind">Mysql</a>
+- <a href="./xmind/Netty.xmind">Netty</a>
+- <a href="./xmind/Hadoop.xmind">Hadoop</a>
