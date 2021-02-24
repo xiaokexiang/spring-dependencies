@@ -1,0 +1,8 @@
+spring:
+  session:
+    redis:
+      namespace: hello
+  redis:
+    host: 172.19.18.179
+    port: 6379
+    password: 123456
