@@ -3,7 +3,10 @@
 ### spring-boot-dependencies
 
 - spring-boot-datasource
+- spring-common
 - spring-event
+- spring-session
+- <a href="./spring-boot-dependencies/spring-security/README.md ">spring-security</a>
 - <a href="./spring-boot-dependencies/spring-network-programming/README.md ">spring-network-programming</a>
 
 ---

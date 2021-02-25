@@ -1,6 +1,7 @@
 package io.spring.springsecurity.config;
 
 import io.spring.springsecurity.service.UserServiceImpl;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
@@ -33,7 +34,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     /**
      * 自定义用户管理系统
      */
-//    @Bean
+    @Bean
     public UserDetailsManager userDetailsManager() {
         UserManager userManager = new UserManager();
         userManager.createUser(innerUser());
@@ -61,6 +62,9 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
         /*
          *  转换为http basic验证方式 http.httpBasic()
          *  转换为form验证的方式 http.formLogin()
+         *
+         *
+         *
          */
         http.formLogin().defaultSuccessUrl("http://www.baidu.com") // login页面登录成功后重定向地址（如果是successfulForwardUrl则是转发）
                 .and().authorizeRequests()
@@ -77,7 +81,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     @Override
     protected void configure(AuthenticationManagerBuilder auth) throws Exception {
         // 1. 使用内置的用户管理器处理，需要配置密码
-        // auth.inMemoryAuthentication().passwordEncoder(passwordEncoder());
+//         auth.inMemoryAuthentication().passwordEncoder(passwordEncoder());
         // 2. 自定义用户验证逻辑（实现 UserDetailsService）
         // auth.userDetailsService(userService).passwordEncoder(passwordEncoder());
         // 3. 自定义用户验证逻辑（实现 UserDetailsManager） 如果不加密不需要配置passwordEncoder
