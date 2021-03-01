@@ -115,6 +115,8 @@ public class UserManager implements UserDetailsManager {
 }
 ```
 
+---
+
 ## 概念与源码解析
 
 ### 获取用户信息
@@ -173,7 +175,163 @@ public abstract class WebSecurityConfigurerAdapter implements
 > 3. 默认由`PasswordEncoderFactories`静态工厂生产`DelegatingPasswordEncoder`。
 > 4. 静态工厂由SS默认配置接口`WebSecurityConfigurer`的适配器类实现`WebSecurityConfigurerAdapter`调用。
 
-### 自动配置入口
+---
 
+## 自动配置入口
 
+### SecurityAutoConfiguration
+
+```java
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnClass(DefaultAuthenticationEventPublisher.class)
+@EnableConfigurationProperties(SecurityProperties.class)
+@Import({ SpringBootWebSecurityConfiguration.class, WebSecurityEnablerConfiguration.class,
+		SecurityDataConfiguration.class })
+public class SecurityAutoConfiguration {
+
+	@Bean
+	@ConditionalOnMissingBean(AuthenticationEventPublisher.class)
+	public DefaultAuthenticationEventPublisher authenticationEventPublisher(ApplicationEventPublisher publisher) {
+		return new DefaultAuthenticationEventPublisher(publisher);
+	}
+
+}
+```
+
+> 1. 默认注入`DefaultAuthenticationEventPublisher`用于时间的发布。
+> 2. 注入配置类`SecurityProperties`
+> 3. 注入`SpringBootWebSecurityConfiguration`、`WebSecurityEnablerConfiguration`、`SecurityDataConfiguration`
+
+#### SpringBootWebSecurityConfiguration
+
+```java
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnClass(WebSecurityConfigurerAdapter.class)
+@ConditionalOnMissingBean(WebSecurityConfigurerAdapter.class)
+@ConditionalOnWebApplication(type = Type.SERVLET)
+public class SpringBootWebSecurityConfiguration {
+
+	@Configuration(proxyBeanMethods = false)
+	@Order(SecurityProperties.BASIC_AUTH_ORDER)
+	static class DefaultConfigurerAdapter extends WebSecurityConfigurerAdapter {
+	}
+}
+```
+
+> 1. 当前环境是`Servlet`，当存在`WebSecurityConfigurerAdapter`时，不注入`SpringBootWebSecurityConfiguration`，不存在时则注入默认的`DefaultConfigurerAdapter`。
+> 2. 注入默认的`DefaultConfigurerAdapter`，同时指定`Order(Integer.MAX_VALUE - 5)`。
+
+#### WebSecurityEnablerConfiguration
+
+```java
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnBean(WebSecurityConfigurerAdapter.class)
+@ConditionalOnMissingBean(name = BeanIds.SPRING_SECURITY_FILTER_CHAIN)
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+@EnableWebSecurity
+public class WebSecurityEnablerConfiguration {
+}
+```
+
+> 1. 当存在`WebSecurityConfigurerAdapter`、不存在`springSecurityFilterChain`且是`Servlet`环境时，激活`@EnableWebSecurity`注解。
+
+##### @EnableWebSecurity
+
+ ```java
+@Retention(value = java.lang.annotation.RetentionPolicy.RUNTIME)
+@Target(value = { java.lang.annotation.ElementType.TYPE })
+@Documented
+@Import({ WebSecurityConfiguration.class,
+		SpringWebMvcImportSelector.class,
+		OAuth2ImportSelector.class })
+@EnableGlobalAuthentication
+@Configuration
+public @interface EnableWebSecurity {
+	boolean debug() default false;
+}
+ ```
+
+> `@EnableWebSecurity`注解的核心在于引入`WebSecurityConfiguration`、`SpringWebMvcImportSelector`、`OAuth2ImportSelector`三个类。
+
+- WebSecurityConfiguration
+
+创建`Spring Security`相关的安全过滤器（beanId = `springSecurityFilterChain`）来对用户的请求进行过滤。
+
+- SpringWebMvcImportSelector
+
+当classpath下存在`DispatcherServlet`时注入`WebMvcSecurityConfiguration`类，主要是用于配置`SpringMVC`相关。
+
+- OAuth2ImportSelector
+
+当存在`ClientRegistration`时注入`OAuth2ClientConfiguration`，当存在`ExchangeFilterFunction`时注入`SecurityReactorContextConfiguration`，当存在`BearerTokenError`时注入`SecurityReactorContextConfiguration`。
+
+- @EnableGlobalAuthentication
+
+核心在于构建认证管理器`AuthenticationManager`。
+
+##### SecurityDataConfiguration
+
+自动添加Spring Security与Spring Data的集成。
+
+### SecurityFilterAutoConfiguration
+
+用于自动注入Spring Security的Filter过滤器类。
+
+```java
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnWebApplication(type = Type.SERVLET)
+@EnableConfigurationProperties(SecurityProperties.class)
+@ConditionalOnClass({ AbstractSecurityWebApplicationInitializer.class, SessionCreationPolicy.class })
+@AutoConfigureAfter(SecurityAutoConfiguration.class)
+public class SecurityFilterAutoConfiguration {
+    // springSecurityFilterChain
+    private static final 
+        String DEFAULT_FILTER_NAME = AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME;
+
+    /**
+     * 当IOC容器中存在beanName为springSecurityFilterChain时注入DelegatingFilterProxyRegistrationBean
+     */
+	@Bean
+	@ConditionalOnBean(name = DEFAULT_FILTER_NAME)
+	public DelegatingFilterProxyRegistrationBean securityFilterChainRegistration(
+			SecurityProperties securityProperties) {
+		DelegatingFilterProxyRegistrationBean registration = new DelegatingFilterProxyRegistrationBean(
+				DEFAULT_FILTER_NAME);
+		registration.setOrder(securityProperties.getFilter().getOrder());
+		registration.setDispatcherTypes(getDispatcherTypes(securityProperties));
+		return registration;
+	}
+    // 省略
+}
+```
+
+> 1. 与上文中的`SecurityAutoConfiguration`分开配置，是为了当存在用户指定的`WebSecurityConfiguration`时仍能指定Order顺序。
+> 2. 在`SecurityFilterAutoConfiguration`完成后调用`SecurityAutoConfiguration`配置类。
+> 3. IOC容器中存在BeanName为`springSecurityFilterChain`时注入`DelegatingFilterProxyRegistrationBean`，在上文的`@EnableWebSecurity`中的`WebSecurityConfiguration`引入。
+
+#### DelegatingFilterProxyRegistrationBean
+
+```java
+public class DelegatingFilterProxyRegistrationBean extends AbstractFilterRegistrationBean<DelegatingFilterProxy>
+		implements ApplicationContextAware {
+    @Override
+	public DelegatingFilterProxy getFilter() {
+		return new DelegatingFilterProxy(this.targetBeanName, getWebApplicationContext()) {
+
+			@Override
+			protected void initFilterBean() throws ServletException {
+				// Don't initialize filter bean on init()
+			}
+
+		};
+	}
+    // 省略
+}
+```
+
+> 1. 通过`委派模式`将创建`ServletRegistrationBean`的委派类`DelegatingFilterProxyRegistrationBean`用于处理url和servlet的映射关系。
+> 2. 将任务委派给名为`springSecurityFilterChain`的servlet代理类`DelegatingFilterProxy`来处理sevlet请求。
+> 3. 实际处理servlet的是代理类`DelegatingFilterProxy`的实现类`FilterChainProxy`。
+
+---
 
