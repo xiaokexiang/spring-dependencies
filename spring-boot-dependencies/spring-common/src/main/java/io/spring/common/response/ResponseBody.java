@@ -1,5 +1,6 @@
 package io.spring.common.response;
 
+import com.alibaba.fastjson.JSONObject;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -44,5 +45,15 @@ public class ResponseBody<T> {
                 .message(ResponseBodyLocal.Prompt.FAILED.getInfo())
                 .time(now())
                 .build();
+    }
+
+    @Override
+    public String toString() {
+        return JSONObject.toJSONString("{" +
+                "code=" + code +
+                ", message='" + message + '\'' +
+                ", data=" + data +
+                ", time='" + time + '\'' +
+                '}');
     }
 }

@@ -5,7 +5,10 @@ spring:
   resources:
     # 可以直接访问static下的静态资源，http://localhost:8080/image.html
     # 最好有个子目录，放行子目录，否则可以直接获取application.yml配置文件
-    static-locations: classpath:static/,file:static/
+    # 可以在本地磁盘上指定一个文件目录存放图片，例如 C://source/hello.jpg,那么通过名字也可以访问
+    static-locations: classpath:static/,file:static/,file:C://source/
   servlet:
     multipart:
       max-file-size: 10KB
+  mvc:
+    static-path-pattern: /images/** # 指定ant访问格式 http://localhost:8080/images/image.html http://localhost:8080/images/hello.jpg

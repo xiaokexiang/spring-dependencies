@@ -1,23 +1,19 @@
 package io.spring.springsecurity.config;
 
+import io.spring.common.response.ResponseBody;
 import io.spring.springsecurity.service.UserServiceImpl;
-import org.springframework.context.annotation.Bean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.builders.WebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.UserDetailsManager;
 
 import javax.annotation.Resource;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.PrintWriter;
 
 /**
  * @author xiaokexiang
@@ -25,48 +21,30 @@ import java.util.List;
  * spring security 核心配置类
  */
 @Configuration
+@ConditionalOnMissingBean(CommonSecurityConfig.class)
 @EnableGlobalMethodSecurity(prePostEnabled = true) // 开启此注解才能使用@PreAuthorize等注解
 public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Resource
-    public UserServiceImpl userService;
+    private UserServiceImpl userService;
 
-    /**
-     * 自定义用户管理系统
-     */
-    @Bean
-    public UserDetailsManager userDetailsManager() {
-        UserManager userManager = new UserManager();
-        userManager.createUser(innerUser());
-        return userManager;
-    }
-
-    private UserDetails innerUser() {
-        // load user by username 模拟从数据库获取用户权限等信息
-        List<GrantedAuthority> authorities = new ArrayList<>();
-        // 添加 ADMIN & USER 权限
-        authorities.add(new SimpleGrantedAuthority("USER"));
-        authorities.add(new SimpleGrantedAuthority("ADMIN"));
-        // 一般数据库用户密码存入时会先加密，此处只是模拟加密后的用户信息
-        // 使用UserDetails.User$UserBuilder构建user
-        return User.withUsername("jack")
-                .passwordEncoder(new BCryptPasswordEncoder()::encode)
-                .password("jack") // 如果不开启加密，那么需要去除passwordEncoder，密码变成"{noop}jack"
-                // AuthorityUtils.NO_AUTHORITIES
-                .authorities(authorities)
-                .build();
-    }
+    @Resource
+    private UserManager userManager;
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {
         /*
          *  转换为http basic验证方式 http.httpBasic()
          *  转换为form验证的方式 http.formLogin()
-         *
-         *
-         *
          */
-        http.formLogin().defaultSuccessUrl("http://www.baidu.com") // login页面登录成功后重定向地址（如果是successfulForwardUrl则是转发）
+        http.formLogin()
+                .successHandler((request, response, authentication) -> {
+                    // 自定义返回体，与successForwardUrl异曲同工之妙
+                    ResponseBody<String> responseBody = ResponseBody.ok("login success");
+                    PrintWriter writer = response.getWriter();
+                    writer.append(responseBody.toString());
+                    writer.flush();
+                })
                 .and().authorizeRequests()
                 .antMatchers("/hello", "/json").access("hasAuthority('USER')") // SPEL表达式
                 .antMatchers("/admin/**").access("hasAuthority('ADMIN') and hasAuthority('USER')")
@@ -85,11 +63,15 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
         // 2. 自定义用户验证逻辑（实现 UserDetailsService）
         // auth.userDetailsService(userService).passwordEncoder(passwordEncoder());
         // 3. 自定义用户验证逻辑（实现 UserDetailsManager） 如果不加密不需要配置passwordEncoder
-        auth.userDetailsService(userDetailsManager()).passwordEncoder(passwordEncoder());
+        auth.userDetailsService(userManager).passwordEncoder(passwordEncoder());
     }
 
     private PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    @Override
+    public void configure(WebSecurity web) throws Exception {
+        web.ignoring().mvcMatchers("/static/**"); // 基于servlet filter放行某些路径
+    }
 }

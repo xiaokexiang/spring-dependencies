@@ -335,3 +335,29 @@ public class DelegatingFilterProxyRegistrationBean extends AbstractFilterRegistr
 
 ---
 
+## 自定义SpringBoot安全配置类
+
+主要通过继承`WebSecurityConfigurerAdapter`抽象类来实现的。
+
+```java
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+
+	@Override
+    protected void configure(HttpSecurity http) throws Exception {
+        // 用于构建安全过滤器链
+    }
+	
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        // 处理用户认证相关（UserDetails）
+    }
+
+    @Override
+    public void configure(WebSecurity web) throws Exception {
+        // 配置webSecurity（基于DelegatingFilterProxy管理的springSecurityFilterChain实现）
+    }
+}
+```
+
+### HttpSecurity
+
