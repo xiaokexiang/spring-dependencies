@@ -335,7 +335,7 @@ public class DelegatingFilterProxyRegistrationBean extends AbstractFilterRegistr
 
 ---
 
-## 自定义SpringBoot安全配置类
+## 自定义配置类
 
 主要通过继承`WebSecurityConfigurerAdapter`抽象类来实现的。
 
@@ -360,4 +360,44 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 ```
 
 ### HttpSecurity
+
+```java
+@Configuration
+public class CommonSecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Resource
+    private UserManager userManager;
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(userManager).passwordEncoder(new BCryptPasswordEncoder());
+    }
+
+    @Override
+    public void configure(WebSecurity web) throws Exception {
+        super.configure(web);
+    }
+
+    private static final String LOGIN_PROCESS_URL = "/process";
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.csrf().disable()
+                .cors()
+                .and()
+                .authorizeRequests().anyRequest().authenticated()
+                .and()
+                .addFilterBefore(new PreLoginFilter(LOGIN_PROCESS_URL, null), UsernamePasswordAuthenticationFilter.class) // 注入filter，进行登录提前校验
+                .formLogin()
+                .loginProcessingUrl(LOGIN_PROCESS_URL) // 实际向后台提交请求的路径，此后会执行UsernamePasswordAuthenticationFilter类
+                // .defaultSuccessUrl("http://www.baidu.com", false) // login页面登录成功后重定向地址（如果是successfulForwardUrl则是转发）
+                .successForwardUrl("/login/success")  // 登录成功后转发的路径（可以是接口）
+                .failureForwardUrl("/login/failure");  // 登录失败的时候会转发到此路径
+
+    }
+}
+```
+
+> 1. 一般通过配置HttpSecurity来实现自定义登录或鉴权的配置。
+> 2. 注入自定义Filter的核心原理在于登录鉴权相关的逻辑由`UsernamePasswordAuthenticationFilter`处理。
 

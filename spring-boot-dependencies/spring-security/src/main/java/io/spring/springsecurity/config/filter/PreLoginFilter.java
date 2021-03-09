@@ -66,6 +66,7 @@ public class PreLoginFilter extends GenericFilterBean {
     @Override
     public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain chain) throws IOException, ServletException {
         HttpServletRequest request = (HttpServletRequest) servletRequest;
+        // 对request进行包装
         HttpParameterWrapper requestWrapper = new HttpParameterWrapper(request);
         if (requiresAuthenticationRequestMatcher.matches(request)) {
             LoginTypeEnum type = getType(request);

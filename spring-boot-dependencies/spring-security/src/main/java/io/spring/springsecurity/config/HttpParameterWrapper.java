@@ -20,6 +20,8 @@ public class HttpParameterWrapper extends HttpServletRequestWrapper {
 
     @Override
     public String getParameter(String name) {
+        // 因为preLoginFilter的下个过滤器UsernamePasswordAuthenticationFilter会调用getParameter()方法
+        // 将其包装成实际调用getAttribute()
         return (String) super.getAttribute(name);
     }
 }
