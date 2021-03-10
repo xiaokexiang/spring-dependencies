@@ -117,7 +117,7 @@ public class UserManager implements UserDetailsManager {
 
 ---
 
-## 概念与源码解析
+## 用户接口与编码器
 
 ### 获取用户信息
 
@@ -177,7 +177,7 @@ public abstract class WebSecurityConfigurerAdapter implements
 
 ---
 
-## 自动配置入口
+## 自动配置
 
 ### SecurityAutoConfiguration
 
@@ -335,7 +335,7 @@ public class DelegatingFilterProxyRegistrationBean extends AbstractFilterRegistr
 
 ---
 
-## 自定义配置类
+## 自定义配置
 
 主要通过继承`WebSecurityConfigurerAdapter`抽象类来实现的。
 
@@ -359,7 +359,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 }
 ```
 
-### HttpSecurity
+### HttpSecurity入门
 
 ```java
 @Configuration
@@ -400,4 +400,498 @@ public class CommonSecurityConfig extends WebSecurityConfigurerAdapter {
 
 > 1. 一般通过配置HttpSecurity来实现自定义登录或鉴权的配置。
 > 2. 注入自定义Filter的核心原理在于登录鉴权相关的逻辑由`UsernamePasswordAuthenticationFilter`处理。
+
+----
+
+## 源码解析
+
+### UsernamePasswordAuthenticationFilter
+
+结合前文所示，用户的账户和密码认证是由`UsernamePasswordAuthenticationFilter`处理，所以我们以此切入。
+
+```java
+public class UsernamePasswordAuthenticationFilter extends
+		AbstractAuthenticationProcessingFilter {
+
+	public UsernamePasswordAuthenticationFilter() {
+        // 处理/login的POST请求
+		super(new AntPathRequestMatcher("/login", "POST"));
+	}
+
+    // 执行实际的认证流程
+    public Authentication attemptAuthentication(HttpServletRequest request,
+			HttpServletResponse response) throws AuthenticationException {
+        // 只支持POST请求，对其进行校验
+		if (postOnly && !request.getMethod().equals("POST")) {
+			throw new AuthenticationServiceException(
+					"Authentication method not supported: " + request.getMethod());
+		}
+        // 通过request.getParameter("username");获取用户名
+		String username = obtainUsername(request);
+        // 通过request.getParameter("password");获取用户密码
+		String password = obtainPassword(request);
+        // 判空及去重
+		if (username == null) {
+			username = "";
+		}
+		if (password == null) {
+			password = "";
+		}
+		username = username.trim();
+        // 将用户密码封装到UsernamePasswordAuthenticationToken中
+		UsernamePasswordAuthenticationToken authRequest = new 		
+            	UsernamePasswordAuthenticationToken(username, password);
+		// 允许子类设置其他参数到认证请求中去
+		setDetails(request, authRequest);
+        // 调用AuthenticationManager去处理认证请求
+		return this.getAuthenticationManager().authenticate(authRequest);
+	}
+}
+```
+
+> 该类的主要作用就是拦截request请求并获取账号和密码，再将其封装到`UsernamePasswordAuthenticationToken`中。再交给`AuthenticationManager`去认证。
+
+### AbstractAuthenticationProcessingFilter
+
+```java
+public abstract class AbstractAuthenticationProcessingFilter extends GenericFilterBean
+		implements ApplicationEventPublisherAware, MessageSourceAware {
+    private AuthenticationSuccessHandler 
+        successHandler = new SavedRequestAwareAuthenticationSuccessHandler(); // success处理器
+	private AuthenticationFailureHandler 
+        failureHandler = new SimpleUrlAuthenticationFailureHandler(); // failure处理器
+
+    // 过滤器的核心方法
+    public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+			throws IOException, ServletException {
+		HttpServletRequest request = (HttpServletRequest) req;
+		HttpServletResponse response = (HttpServletResponse) res;
+		// 判断是否需要鉴权（本质就是判断路径是否匹配），由子类构造中实现的（POST /login请求）
+		if (!requiresAuthentication(request, response)) {
+			chain.doFilter(request, response);
+			return;
+		}
+		if (logger.isDebugEnabled()) {
+			logger.debug("Request is to process authentication");
+		}
+		// 鉴权校验，实际上调用了子类的attemptAuthentication实现
+		Authentication authResult;
+		try {
+            // 如果返回为空说明子类验证没有完成，立即返回
+			authResult = attemptAuthentication(request, response);
+			if (authResult == null) {
+				return;
+			}
+            // 处理session策略，此处默认是空实现
+			sessionStrategy.onAuthentication(authResult, request, response);
+		}
+		catch (InternalAuthenticationServiceException failed) {
+			logger.error(
+					"An internal error occurred while trying to authenticate the user.",
+					failed);
+            // 失败处理器处理
+			unsuccessfulAuthentication(request, response, failed);
+			return;
+		}
+		catch (AuthenticationException failed) {
+			// 与上同理
+			unsuccessfulAuthentication(request, response, failed);
+			return;
+		}
+		// 是否跳过其他过滤器，默认是跳过的
+		if (continueChainBeforeSuccessfulAuthentication) {
+			chain.doFilter(request, response);
+		}
+        // 成功后的处理器处理
+		successfulAuthentication(request, response, chain, authResult);
+	}
+    
+}
+```
+
+> 1. 是`UsernamePasswordAuthenticationFilter`的父类，默认实现了`Filter`过滤器的核心方法`doFilter`。
+> 2. 首先是对请求路径的判断，必须是`POST /login`请求才会拦截。否则直接交由下个过滤器处理。
+> 3. 调用子类的`attemptAuthentication`进行认证操作，并设置session相关的策略（默认空实现）。
+> 4. 如果发生了异常或校验失败，调用失败处理器。继而判断是否需要跳过后面的过滤器，最终执行成功处理器。
+
+
+
+### AuthenticationManager
+
+```java
+public interface AuthenticationManager {
+    Authentication authenticate(Authentication authentication)
+			throws AuthenticationException;
+}
+```
+
+> 认证管理器顶级接口，上文中封装的`UsernamePasswordAuthenticationToken`就会交予`AuthenticationManager`的实现类来处理。如果验证成功就返回`Authentication`对象，否则就抛出异常。
+
+#### 初始化流程🔒
+
+##### 1.  SecurityAutoConfiguration
+
+>  请注意：下述的流程展示省略了大部分与`AuthenticationManager`初始化无关的代码！！
+
+```java
+// // 通过自动装配注入了`SecurityAutoConfiguration`类，继而注入了`WebSecurityEnablerConfiguration`
+@Import({WebSecurityEnablerConfiguration.class})
+public class SecurityAutoConfiguration {
+}
+```
+
+##### 2. WebSecurityEnablerConfiguration
+
+```java
+@ConditionalOnBean(WebSecurityConfigurerAdapter.class)
+@EnableWebSecurity
+public class WebSecurityEnablerConfiguration {
+}
+```
+
+> 因为容器中存在`WebSecurityConfigurerAdapter`，所以启用了`@EnableWebSecurity`注解。
+
+##### 3. EnableWebSecurity🎈
+
+```java
+@Import({ WebSecurityConfiguration.class})
+@EnableGlobalAuthentication
+public @interface EnableWebSecurity {
+}
+```
+
+> `@EnableWebSecurity`注解的核心在于`@EnableGlobalAuthentication`和`WebSecurityConfiguration`类。
+
+- 1. @EnableGlobalAuthentication
+
+```java
+/**
+ * 此注解可用于配置`AuthenticationManagerBuilder`实例，而`AuthenticationManagerBuilder`则
+ * 用于创建`AuthenticationManager`实例
+ */
+@Import(AuthenticationConfiguration.class) // 注入AuthenticationConfiguration类
+public @interface EnableGlobalAuthentication {
+}
+
+@Import(ObjectPostProcessorConfiguration.class) // 注入了ObjectPostProcessorConfiguration类
+public class AuthenticationConfiguration {
+}
+```
+
+> `@EnableGlobalAuthentication`的核心就是对`AuthenticationConfiguration`和`ObjectPostProcessorConfiguration`的注入。
+
+- ObjectPostProcessorConfiguration
+
+```java
+@Configuration(proxyBeanMethods = false)
+@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+public class ObjectPostProcessorConfiguration {
+
+	@Bean
+	@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+	public ObjectPostProcessor<Object> objectPostProcessor(
+			AutowireCapableBeanFactory beanFactory) {
+        // 创建默认的ObjectPostProcessor实现类注入到容器中
+		return new AutowireBeanFactoryObjectPostProcessor(beanFactory);
+	}
+}
+
+// 顶级接口
+public interface ObjectPostProcessor<T> {
+	<O extends T> O postProcess(O object);
+}
+
+final class AutowireBeanFactoryObjectPostProcessor
+		implements ObjectPostProcessor<Object>, DisposableBean, SmartInitializingSingleton {
+    
+    // 将bean注入到容器的核心方法
+    public <T> T postProcess(T object) {
+		if (object == null) {
+			return null;
+		}
+		T result = null;
+		try {
+            // 初始化bean
+			result = (T) this.autowireBeanFactory
+                			.initializeBean(object,object.toString());
+		} catch (RuntimeException e) {
+			// 省略
+		}
+        // 自动注入
+		this.autowireBeanFactory.autowireBean(object);
+		// 省略
+		return result;
+	}
+}
+```
+
+> 1.  此类是通过`AuthenticationConfiguration`注入的，此处涉及一个概念：`ObjectPostProcessor`。
+> 2. `ObjectPostProcessor`可以通过`new`创建的对象交由`IOC容器`进行管理。
+> 3. `ObjectPostProcessorConfiguration`默认注入了`ObjectPostProcessor`的实现类`AutowireBeanFactoryObjectPostProcessor`到容器中。核心就是`初始化Bean`并自动注入。
+> 4. 使用`ObjectPostProcessor`的目的是为了解决`因为便于管理大量对象，没有暴露这些对象的属性，但是需要手动注册bean到容器中`的问题，注入到容器中的bean我们可以对其进行管理、修改或增强。
+
+- AuthenticationConfiguration🔒
+
+```java
+@Configuration(proxyBeanMethods = false)
+@Import(ObjectPostProcessorConfiguration.class) // 上文已解析
+public class AuthenticationConfiguration {
+    // IOC容器上下文，BeanFactory的实现
+    private ApplicationContext applicationContext;
+    // 此处涉及authenticationManager注入
+	private AuthenticationManager authenticationManager;
+    // 默认false，用于判断authenticationManager是否已经初始化
+	private boolean authenticationManagerInitialized;
+    // 用于注入bean到容器中
+    private ObjectPostProcessor<Object> objectPostProcessor; 
+    
+    @Bean
+	public AuthenticationManagerBuilder authenticationManagerBuilder(
+			ObjectPostProcessor<Object> objectPostProcessor, ApplicationContext context) {
+        // 创建默认的解码器（上文有解析过，此处使用了静态工厂创建解码器）
+		LazyPasswordEncoder defaultPasswordEncoder = new LazyPasswordEncoder(context);
+		AuthenticationEventPublisher authenticationEventPublisher = 
+            				getBeanOrNull(context, AuthenticationEventPublisher.class);
+		// 创建默认的AuthenticationManagerBuilder，用于构建AuthenticationManager
+        // 此处传入了上文的默认解码器，以及AutowireBeanFactoryObjectPostProcessor
+		DefaultPasswordEncoderAuthenticationManagerBuilder result = 
+            new DefaultPasswordEncoderAuthenticationManagerBuilder(
+            								objectPostProcessor, defaultPasswordEncoder);
+		if (authenticationEventPublisher != null) {
+			result.authenticationEventPublisher(authenticationEventPublisher);
+		}
+		return result;
+	}
+    
+    // WebSecurityConfigurerAdapter中通过AuthenticationConfiguration调用
+    public AuthenticationManager getAuthenticationManager() throws Exception {
+        // 如果已经初始化那么直接返回authenticationManager
+		if (this.authenticationManagerInitialized) {
+			return this.authenticationManager;
+		}
+        // 判断容器中是否存在AuthenticationManagerBuilder（AuthenticationManager的构造器）
+		AuthenticationManagerBuilder authBuilder =
+            this.applicationContext.getBean(AuthenticationManagerBuilder.class);
+        // CAS保证线程安全，调用委派模式通过AuthenticationManagerBuilder创建AuthenticationManager
+		if (this.buildingAuthenticationManager.getAndSet(true)) {
+			return new AuthenticationManagerDelegator(authBuilder);
+		}
+		// 判断是否存在全局配置类（即继承GlobalAuthenticationConfigurerAdapter的类）
+		for (GlobalAuthenticationConfigurerAdapter config : globalAuthConfigurers) {
+			authBuilder.apply(config);
+		}
+		// 委派模式分配的类用于构建AuthenticationManager
+		authenticationManager = authBuilder.build();
+		// 若没有符合条件的委托类进行鉴权操作，那么就创建
+		if (authenticationManager == null) {
+            // 此处的authenticationManager还是可以为null的
+			authenticationManager = getAuthenticationManagerBean();
+		}
+		// 标记为已创建AuthenticationManager并返回
+		this.authenticationManagerInitialized = true;
+		return authenticationManager;
+	}
+    
+    static final class AuthenticationManagerDelegator implements AuthenticationManager {
+		private AuthenticationManagerBuilder delegateBuilder;
+		private AuthenticationManager delegate;
+		private final Object delegateMonitor = new Object();
+
+		AuthenticationManagerDelegator(AuthenticationManagerBuilder delegateBuilder) {
+			Assert.notNull(delegateBuilder, "delegateBuilder cannot be null");
+			this.delegateBuilder = delegateBuilder;
+		}
+
+		@Override
+		public Authentication authenticate(Authentication authentication)
+				throws AuthenticationException {
+            // 如果AuthenticationManager不为null直接调用
+			if (this.delegate != null) {
+				return this.delegate.authenticate(authentication);
+			}
+			// 否则加锁并创建AuthenticationManager
+			synchronized (this.delegateMonitor) {
+				if (this.delegate == null) {
+					this.delegate = this.delegateBuilder.getObject();
+					this.delegateBuilder = null;
+				}
+			}
+			// 最终调用AuthenticationManager.authenticate()
+			return this.delegate.authenticate(authentication);
+		}
+    
+    private AuthenticationManager getAuthenticationManagerBean() {
+		return lazyBean(AuthenticationManager.class);
+	}
+    // 此步是用于创建AuthenticationManager并加入到容器中进行管理
+    private <T> T lazyBean(Class<T> interfaceName) {
+        // 获取BeanFactory的单例Bean
+		LazyInitTargetSource lazyTargetSource = new LazyInitTargetSource();
+        // 从容器中通过类型获取bean对象集合
+		String[] beanNamesForType = BeanFactoryUtils.beanNamesForTypeIncludingAncestors(
+				applicationContext, interfaceName);
+		if (beanNamesForType.length == 0) {
+			return null;
+		}
+		String beanName;
+		if (beanNamesForType.length > 1) {
+            // 存在相同类型的多个bean，判断是否有@Primary注解修饰的bean，若有则返回，否则报错
+			List<String> primaryBeanNames = getPrimaryBeanNames(beanNamesForType);
+			// 如果不存在或数量不等于1，就抛出异常
+			Assert.isTrue(primaryBeanNames.size() != 0, () -> "Found " + beanNamesForType.length
+					+ " beans for type " + interfaceName + ", but none marked as primary");
+			Assert.isTrue(primaryBeanNames.size() == 1, () -> "Found " + primaryBeanNames.size()
+					+ " beans for type " + interfaceName + " marked as primary");
+			beanName = primaryBeanNames.get(0);
+		} else {
+            // 否则直接返回第一个
+			beanName = beanNamesForType[0];
+		}
+		// 设置beanFactory相关参数
+		lazyTargetSource.setTargetBeanName(beanName);
+		lazyTargetSource.setBeanFactory(applicationContext);
+        // 创建代理工厂并调用postProcess将new的对象加入容器中
+		ProxyFactoryBean proxyFactory = new ProxyFactoryBean();
+		proxyFactory = objectPostProcessor.postProcess(proxyFactory);
+		proxyFactory.setTargetSource(lazyTargetSource);
+        // 返回容器中的符合条件的对象(即AuthenticationManager对象)
+		return (T) proxyFactory.getObject();
+	}
+}
+```
+
+> 1. `AuthenticationConfiguration`提供了默认解码器和基于默认解码器的鉴权管理构造器。
+> 2. 提供了`getAuthenticationManager()`用于返回容器中的`AuthenticationManager`对象。
+> 3. 尝试通过获取容器中的`AuthenticationManagerBuilder`并调用委派模式、建造者模式来创建`AuthenticationManager`。
+> 4. 如果仍没有，么会基于类型在容器中进行查找（找不到或多个会抛出异常），然后进行鉴权，如果成功返回`Authentication`，否则抛出异常。
+
+- 2. WebSecurityConfiguration
+
+```java
+@Configuration(proxyBeanMethods = false)
+public class WebSecurityConfiguration implements ImportAware, BeanClassLoaderAware {
+    
+    private WebSecurity webSecurity;
+    private List<SecurityConfigurer<Filter, WebSecurity>> webSecurityConfigurers;
+    
+    @Autowired(required = false)
+	public void setFilterChainProxySecurityConfigurer(){ 
+        // 此处代码是把容器中的SecurityConfigurer的实现类转换为SecurityBuilder设置为webSecurity的属性
+        // 并将SecurityConfigurer的实现类加入集合中
+    }
+    
+    // 创建beanName为'springSecurityFilterChain'的过滤器链并得到整合后的Filter
+    @Bean(name = AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME)
+	public Filter springSecurityFilterChain() throws Exception {
+        // webSecurityConfigurers 是用于创建web配置的对象集合
+		boolean hasConfigurers = webSecurityConfigurers != null
+				&& !webSecurityConfigurers.isEmpty();
+		if (!hasConfigurers) {
+            // 若没有SecurityConfigurer的实现类（只要继承了WebSecurityConfigurerAdapter就不会为空)
+            // 则创建默认的WebSecurityConfigurerAdapter类
+			WebSecurityConfigurerAdapter adapter = objectObjectPostProcessor
+					.postProcess(new WebSecurityConfigurerAdapter() {
+					});
+			webSecurity.apply(adapter);
+		}
+        // 将WebSecurity对象转换为Filter（查看下文）
+		return webSecurity.build();
+	}
+}
+```
+
+> 1. 基于`WebSecurityConfiguration`来创建`WebSecurity`对象。
+> 2. `WebSecurity`处理`Filter过滤器链`相关，`HttpSecurity`处理http请求相关，都实现自`SecurityBuilder`。
+> 3. 如果容器中`SecurityConfigurer<Filter, WebSecurity>`的子类、实现类集合为空，那么就会创建默认的`WebSecurityConfigurerAdapter`对象并加入到容器中。
+
+- AbstractSecurityBuilder.build()🔒
+
+```java
+public abstract class AbstractSecurityBuilder<O> implements SecurityBuilder<O> {
+    
+    private AtomicBoolean building = new AtomicBoolean();
+	private O object;
+    
+    public final O build() throws Exception {
+        // CAS保证多线程下只能创建一次
+		if (this.building.compareAndSet(false, true)) {
+			this.object = doBuild();
+			return this.object;
+		}
+		throw new AlreadyBuiltException("This object has already been built");
+	}
+    // 模板方法,由子类具体实现
+    protected abstract O doBuild() throws Exception;
+}
+
+public abstract class AbstractConfiguredSecurityBuilder<O, B extends SecurityBuilder<O>>
+		extends AbstractSecurityBuilder<O> {
+    @Override
+	protected final O doBuild() throws Exception {
+        // 加锁初始化,BuildState由五种状态
+		synchronized (configurers) {
+			buildState = BuildState.INITIALIZING;
+			beforeInit(); // 钩子函数,初始化前调用,默认空实现
+			init();
+			buildState = BuildState.CONFIGURING;
+			beforeConfigure(); // 钩子函数,配置前调用,默认空实现
+			configure();
+			buildState = BuildState.BUILDING;
+			O result = performBuild();
+			buildState = BuildState.BUILT;
+			return result;
+		}
+	}
+    private void init() throws Exception {
+        // 获取所有security的配置类
+		Collection<SecurityConfigurer<O, B>> configurers = getConfigurers();
+		// 依次初始化他们
+		for (SecurityConfigurer<O, B> configurer : configurers) {
+			configurer.init((B) this); // 此处会调用`WebSecurityConfigurerAdapter.init()方法`
+		}
+		// 所有调用apply的security的配置类都会加入其中,用于立即调用
+		for (SecurityConfigurer<O, B> configurer : configurersAddedInInitializing) {
+			configurer.init((B) this);
+		}
+	}
+}
+```
+
+> 1. 
+
+
+
+#### WebSecurityConfigurerAdapter
+
+```java
+public abstract class WebSecurityConfigurerAdapter implements
+		WebSecurityConfigurer<WebSecurity> {
+    private boolean disableLocalConfigureAuthenticationBldr;
+    private AuthenticationManager authenticationManager;
+    
+    // 核心：获取AuthenticationManager来使用
+    protected AuthenticationManager authenticationManager() throws Exception {
+        // AuthenticationManager是否已经初始化
+		if (!authenticationManagerInitialized) {
+            
+			configure(localConfigureAuthenticationBldr);
+			if (disableLocalConfigureAuthenticationBldr) {
+				authenticationManager = authenticationConfiguration
+						.getAuthenticationManager();
+			}
+			else {
+				authenticationManager = localConfigureAuthenticationBldr.build();
+			}
+			authenticationManagerInitialized = true;
+		}
+		return authenticationManager;
+	}
+    
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+		this.disableLocalConfigureAuthenticationBldr = true;
+	}
+}
+```
+
+> 只要注入`WebSecurityConfigurerAdapter`或其子类，那么就会执行初始化（`@SecurityAutoConfiguration`注解会注入默认的`DefaultConfigurerAdapter`当classpath下不存在时）。
 
