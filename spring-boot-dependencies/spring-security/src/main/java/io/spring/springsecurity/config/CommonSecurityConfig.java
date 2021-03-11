@@ -2,10 +2,14 @@ package io.spring.springsecurity.config;
 
 import io.spring.springsecurity.config.filter.PreLoginFilter;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.authentication.configuration.EnableGlobalAuthentication;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.builders.WebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -16,6 +20,7 @@ import javax.annotation.Resource;
  * @since 2021/3/8
  */
 @Configuration
+@EnableGlobalAuthentication
 public class CommonSecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Resource
@@ -28,6 +33,7 @@ public class CommonSecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Override
     public void configure(WebSecurity web) throws Exception {
+        // webSecurity主要配置FilterChain、忽略路径相关
         super.configure(web);
     }
 
@@ -35,11 +41,24 @@ public class CommonSecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {
+        // 主要配置http请求、鉴权、过滤器相关
         http.csrf().disable()
                 .cors()
                 .and()
                 .authorizeRequests().anyRequest().authenticated()
                 .and()
+                .authenticationProvider(new AuthenticationProvider() {
+
+                    @Override
+                    public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+                        return null;
+                    }
+
+                    @Override
+                    public boolean supports(Class<?> authentication) {
+                        return false;
+                    }
+                }) // 可以添加多个authenticationProvider，这样在ProviderManager会依次进行authenticate
                 .addFilterBefore(new PreLoginFilter(LOGIN_PROCESS_URL, null), UsernamePasswordAuthenticationFilter.class)
                 .formLogin()
                 .loginProcessingUrl(LOGIN_PROCESS_URL) // 实际向后台提交请求的路径，此后会执行UsernamePasswordAuthenticationFilter类

@@ -403,7 +403,7 @@ public class CommonSecurityConfig extends WebSecurityConfigurerAdapter {
 
 ----
 
-## 源码解析
+## AuthenticationManager源码解析
 
 ### UsernamePasswordAuthenticationFilter
 
@@ -514,9 +514,7 @@ public abstract class AbstractAuthenticationProcessingFilter extends GenericFilt
 > 3. 调用子类的`attemptAuthentication`进行认证操作，并设置session相关的策略（默认空实现）。
 > 4. 如果发生了异常或校验失败，调用失败处理器。继而判断是否需要跳过后面的过滤器，最终执行成功处理器。
 
-
-
-### AuthenticationManager
+### AuthenticationManager初始化流程🔒
 
 ```java
 public interface AuthenticationManager {
@@ -527,9 +525,7 @@ public interface AuthenticationManager {
 
 > 认证管理器顶级接口，上文中封装的`UsernamePasswordAuthenticationToken`就会交予`AuthenticationManager`的实现类来处理。如果验证成功就返回`Authentication`对象，否则就抛出异常。
 
-#### 初始化流程🔒
-
-##### 1.  SecurityAutoConfiguration
+#### 1. SecurityAutoConfiguration
 
 >  请注意：下述的流程展示省略了大部分与`AuthenticationManager`初始化无关的代码！！
 
@@ -538,31 +534,22 @@ public interface AuthenticationManager {
 @Import({WebSecurityEnablerConfiguration.class})
 public class SecurityAutoConfiguration {
 }
-```
 
-##### 2. WebSecurityEnablerConfiguration
-
-```java
 @ConditionalOnBean(WebSecurityConfigurerAdapter.class)
 @EnableWebSecurity
 public class WebSecurityEnablerConfiguration {
 }
-```
 
-> 因为容器中存在`WebSecurityConfigurerAdapter`，所以启用了`@EnableWebSecurity`注解。
-
-##### 3. EnableWebSecurity🎈
-
-```java
 @Import({ WebSecurityConfiguration.class})
 @EnableGlobalAuthentication
 public @interface EnableWebSecurity {
 }
 ```
 
-> `@EnableWebSecurity`注解的核心在于`@EnableGlobalAuthentication`和`WebSecurityConfiguration`类。
+> 1. 因为容器中存在`WebSecurityConfigurerAdapter`，所以启用了`@EnableWebSecurity`注解。
+> 2. `@EnableWebSecurity`注解的核心在于`@EnableGlobalAuthentication`和`WebSecurityConfiguration`类。
 
-- 1. @EnableGlobalAuthentication
+#### 2. @EnableGlobalAuthentication🎈
 
 ```java
 /**
@@ -575,12 +562,28 @@ public @interface EnableGlobalAuthentication {
 
 @Import(ObjectPostProcessorConfiguration.class) // 注入了ObjectPostProcessorConfiguration类
 public class AuthenticationConfiguration {
+    
+    // 初始化UserDetailsService实现类，若存在多个则不会继续初始化
+    // 如果存在一个，那么会创建DaoAuthenticationProvider作为属性注入到AuthenticationManagerBuilder中
+    @Bean
+	public static InitializeUserDetailsBeanManagerConfigurer 		
+        	initializeUserDetailsBeanManagerConfigurer(ApplicationContext context) {
+		return new InitializeUserDetailsBeanManagerConfigurer(context);
+	}
+
+    // 尝试从IOC容器中获取AuthenticationProvider对象并设置到AuthenticationManagerBuilder中，
+    // 如果存在就不设置。
+	@Bean
+	public static InitializeAuthenticationProviderBeanManagerConfigurer 
+        	initializeAuthenticationProviderBeanManagerConfigurer(ApplicationContext context) {
+		return new InitializeAuthenticationProviderBeanManagerConfigurer(context);
+	}
 }
 ```
 
 > `@EnableGlobalAuthentication`的核心就是对`AuthenticationConfiguration`和`ObjectPostProcessorConfiguration`的注入。
 
-- ObjectPostProcessorConfiguration
+##### 2.1 ObjectPostProcessorConfiguration
 
 ```java
 @Configuration(proxyBeanMethods = false)
@@ -630,7 +633,7 @@ final class AutowireBeanFactoryObjectPostProcessor
 > 3. `ObjectPostProcessorConfiguration`默认注入了`ObjectPostProcessor`的实现类`AutowireBeanFactoryObjectPostProcessor`到容器中。核心就是`初始化Bean`并自动注入。
 > 4. 使用`ObjectPostProcessor`的目的是为了解决`因为便于管理大量对象，没有暴露这些对象的属性，但是需要手动注册bean到容器中`的问题，注入到容器中的bean我们可以对其进行管理、修改或增强。
 
-- AuthenticationConfiguration🔒
+##### 2.2 AuthenticationConfiguration🔒
 
 ```java
 @Configuration(proxyBeanMethods = false)
@@ -765,7 +768,7 @@ public class AuthenticationConfiguration {
 > 3. 尝试通过获取容器中的`AuthenticationManagerBuilder`并调用委派模式、建造者模式来创建`AuthenticationManager`。
 > 4. 如果仍没有，么会基于类型在容器中进行查找（找不到或多个会抛出异常），然后进行鉴权，如果成功返回`Authentication`，否则抛出异常。
 
-- 2. WebSecurityConfiguration
+#### 3. WebSecurityConfiguration
 
 ```java
 @Configuration(proxyBeanMethods = false)
@@ -804,7 +807,7 @@ public class WebSecurityConfiguration implements ImportAware, BeanClassLoaderAwa
 > 2. `WebSecurity`处理`Filter过滤器链`相关，`HttpSecurity`处理http请求相关，都实现自`SecurityBuilder`。
 > 3. 如果容器中`SecurityConfigurer<Filter, WebSecurity>`的子类、实现类集合为空，那么就会创建默认的`WebSecurityConfigurerAdapter`对象并加入到容器中。
 
-- AbstractSecurityBuilder.build()🔒
+##### 3.1 AbstractSecurityBuilder.build()🔒
 
 ```java
 public abstract class AbstractSecurityBuilder<O> implements SecurityBuilder<O> {
@@ -849,39 +852,111 @@ public abstract class AbstractConfiguredSecurityBuilder<O, B extends SecurityBui
 		for (SecurityConfigurer<O, B> configurer : configurers) {
 			configurer.init((B) this); // 此处会调用`WebSecurityConfigurerAdapter.init()方法`
 		}
-		// 所有调用apply的security的配置类都会加入其中,用于立即调用
+		// 所有调用apply的security的配置类在BuildState为INITIALIZING都会加入其中，后续补上初始化
 		for (SecurityConfigurer<O, B> configurer : configurersAddedInInitializing) {
 			configurer.init((B) this);
 		}
 	}
+    // 模板方法，默认由三个实现：AuthenticationManagerBuilder、HttpSecurity、WebSecurity
+    // 分别对应内置鉴权管理器，DefaultSecurityFilterChain、FilterChainProxy相关配置
+    protected abstract O performBuild() throws Exception;
 }
 ```
 
-> 1. 
+> 1. 核心在于找出所有需要初始化的`SecurityConfigurer`的子类对`SecurityBuilder`的子类进行初始化操作。
+> 2. 此处也会调用`WebSecurityConfigurerAdapter.init()`方法。
 
-
-
-#### WebSecurityConfigurerAdapter
+#### 4. WebSecurityConfigurerAdapter
 
 ```java
 public abstract class WebSecurityConfigurerAdapter implements
 		WebSecurityConfigurer<WebSecurity> {
     private boolean disableLocalConfigureAuthenticationBldr;
+    private boolean disableDefaults; // 初始化是否需要默认配置
     private AuthenticationManager authenticationManager;
+    private HttpSecurity http;
+    private AuthenticationManagerBuilder localConfigureAuthenticationBldr;
+    
+    // 自动注入容器中的AuthenticationConfiguration，上文已经解析过
+    @Autowired
+	public void setAuthenticationConfiguration(
+			AuthenticationConfiguration authenticationConfiguration) {
+		this.authenticationConfiguration = authenticationConfiguration;
+	}
+    // 配置鉴权管理器构造器
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        // 当有子类复写该方法时（不调用super.configure）就不会将参数改为true
+		this.disableLocalConfigureAuthenticationBldr = true;
+	}
+    
+    // 初始化WebSecurity相关属性
+    public void init(final WebSecurity web) throws Exception {
+        // 首先获取HttpSecurity属性
+		final HttpSecurity http = getHttp();
+        // 省略
+	}
+    
+    protected final HttpSecurity getHttp() throws Exception {
+		if (http != null) {
+			return http;
+		}
+		// 省略
+        // 核心！！！！！ 获取容器中的authenticationManager或子类创建的
+		AuthenticationManager authenticationManager = authenticationManager();
+        // 设置为parent属性，在AuthenticationManagerBuilder中作为参数来创建ProviderManager
+        // 因为用户可以指定多个自己的AuthenticationProvider
+        // 在自定义AuthenticationProvider不存在时会继续往上查找parent的AuthenticationManager对象。
+        authenticationBuilder.parentAuthenticationManager(authenticationManager);
+        // 设置HttpSecurity创建的必要共享参数（上下文之类的）
+		Map<Class<?>, Object> sharedObjects = createSharedObjects();
+        // 创建HttpSecurity对象并加入容器中
+		http = new HttpSecurity(objectPostProcessor, authenticationBuilder,
+				sharedObjects);
+        // 默认disableDefaults为false，除非显示的在构造中指定为true
+		if (!disableDefaults) {
+			// 设置默认的参数给httpSecurity
+			http
+				.csrf().and()
+				.addFilter(new WebAsyncManagerIntegrationFilter())
+				.exceptionHandling().and()
+				.headers().and()
+				.sessionManagement().and()
+				.securityContext().and()
+				.requestCache().and()
+				.anonymous().and()
+				.servletApi().and()
+				.apply(new DefaultLoginPageConfigurer<>()).and()
+				.logout();
+			// 通过SPI获取AbstractHttpConfigurer对象的集合
+			ClassLoader classLoader = this.context.getClassLoader();
+			List<AbstractHttpConfigurer> defaultHttpConfigurers =
+					SpringFactoriesLoader.loadFactories(AbstractHttpConfigurer.class, classLoader);
+			// 将其他的security配置类的子类都进行初始化操作
+			for (AbstractHttpConfigurer configurer : defaultHttpConfigurers) {
+				http.apply(configurer);
+			}
+		}
+        // 如果子类实现了该方法就使用子类的，否则就是父类默认的httpSecurity相关配置
+		configure(http);
+		return http;
+	}
     
     // 核心：获取AuthenticationManager来使用
     protected AuthenticationManager authenticationManager() throws Exception {
-        // AuthenticationManager是否已经初始化
+        // AuthenticationManager是否已经初始化，第一次都是没有初始化
 		if (!authenticationManagerInitialized) {
-            
+            // 查看子类是否复写configure()来配置鉴权管理构造器
 			configure(localConfigureAuthenticationBldr);
+            // true则获取之前AuthenticationConfiguration中创建的AuthenticationManager
 			if (disableLocalConfigureAuthenticationBldr) {
 				authenticationManager = authenticationConfiguration
 						.getAuthenticationManager();
 			}
 			else {
+                // 否则基于子类的实现构建新的security配置类
 				authenticationManager = localConfigureAuthenticationBldr.build();
 			}
+            // 设置初始化标识
 			authenticationManagerInitialized = true;
 		}
 		return authenticationManager;
@@ -893,5 +968,96 @@ public abstract class WebSecurityConfigurerAdapter implements
 }
 ```
 
-> 只要注入`WebSecurityConfigurerAdapter`或其子类，那么就会执行初始化（`@SecurityAutoConfiguration`注解会注入默认的`DefaultConfigurerAdapter`当classpath下不存在时）。
+> 1. 由`WebSecurityConfiguration`中注入的bean`springSecurityFilterChain`触发了`WebSecurityConfigurerAdapter`中的`init`初始化操作。
+>
+> 2. `init()`会获取容器中的`AuthenticationManager`，触发`HttpSecurity`的初始化工作，并设置默认的`HttpSecurity`参数。
+>
+> 3. 最终`AuthenticationManager`对象作为``parentAuthenticationManager`属性被用于`ProviderManager`创建，并注入到容器中。
+>
+> 4. 和`ProviderManager`流程类似，`WebSecurity`和`HttpSecurity`也是被设置属性参数后注入到容器中。
+>
+>    ```java
+>    @Override
+>        protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+>            // 可以配置多个AuthenticationProvider的实现类
+>            // 但是建议一个UserDetailService对应一个AuthenticationProvider
+>            auth.authenticationProvider()
+>                .authenticationProvider()
+>                .userDetailsService(userManager)
+>                .passwordEncoder(new BCryptPasswordEncoder());
+>    ```
+
+#### 5. ProvideManager
+
+此处主要解释`ProvideManager`、`AuthenticationManager`、`AuthenticationProvider`三者之间的联系。
+
+```java
+public interface AuthenticationManager {
+    Authentication authenticate(Authentication authentication) throws AuthenticationException;
+}
+
+public interface AuthenticationProvider {
+    Authentication authenticate(Authentication authentication) throws AuthenticationException;
+    // 根据不同角度进行判断（适配器模式）
+    boolean supports(Class<?> authentication);
+}
+
+public class ProviderManager implements AuthenticationManager, MessageSourceAware,
+		InitializingBean {
+    // 持有AuthenticationProvider实现类集合的引用
+	private List<AuthenticationProvider> providers = Collections.emptyList();
+    // 会被
+    public Authentication authenticate(Authentication authentication)
+												throws AuthenticationException {
+		// 注意此处是两个result，分别对应AuthenticationProvider实现类和AuthenticationManager实现类
+		Authentication result = null;
+		Authentication parentResult = null;
+		// 依次调用AuthenticationProvider实现类
+		for (AuthenticationProvider provider : getProviders()) {
+            // 如果support为false那么就跳过此次验证
+			if (!provider.supports(toTest)) {
+				continue;
+			}
+			try {
+                // 进行验证，如果验证成功（返回Authentication不为null），则不需要继续鉴权
+				result = provider.authenticate(authentication);
+				if (result != null) {
+                    // 结果不为空（成功）则保存detail(ip地址，证书之类的)
+					copyDetails(authentication, result);
+					break;
+				}
+			}
+			// 省略
+		}
+		// 如果结果为null（即没有鉴权成功）
+		if (result == null && parent != null) {
+			// 尝试调用AuthenticationManager的实现类进行鉴权，并将结果赋予result
+			try {
+				result = parentResult = parent.authenticate(authentication);
+			}
+			// 省略
+		}
+		// 省略
+	}
+}
+
+```
+
+![](https://image.leejay.top/FvU2DWc-HPFITz_0jZCnzyqerxFO)
+
+> 1. `ProviderManager`是`AuthenticationManager`的实现类，持有`AuthenticationProvider`集合的引用。
+> 2. 容器中可以存在多个`AuthenticationProvider`的实现类和一个`AuthenticationManager`实现类。
+> 3. `ProviderManager`在鉴权是会先尝试调用用户指定的单个或多个`AuthenticationProvider（没有就跳过）`，然后尝试执行`AuthenticationManager`的实现类进行鉴权。
+
+
+
+
+
+
+
+## Filter
+
+### Spring Security Filter
+
+### Servlet Filter
 
