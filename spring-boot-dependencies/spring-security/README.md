@@ -535,7 +535,6 @@ public interface AuthenticationManager {
 public class SecurityAutoConfiguration {
 }
 
-@ConditionalOnBean(WebSecurityConfigurerAdapter.class)
 @EnableWebSecurity
 public class WebSecurityEnablerConfiguration {
 }
@@ -549,7 +548,131 @@ public @interface EnableWebSecurity {
 > 1. 因为容器中存在`WebSecurityConfigurerAdapter`，所以启用了`@EnableWebSecurity`注解。
 > 2. `@EnableWebSecurity`注解的核心在于`@EnableGlobalAuthentication`和`WebSecurityConfiguration`类。
 
-#### 2. @EnableGlobalAuthentication🎈
+#### 2. WebSecurityConfiguration
+
+```java
+@Configuration(proxyBeanMethods = false)
+public class WebSecurityConfiguration implements ImportAware, BeanClassLoaderAware {
+    
+    private WebSecurity webSecurity;
+    private List<SecurityConfigurer<Filter, WebSecurity>> webSecurityConfigurers;
+    // 此处已经注入了AutowireBeanFactoryObjectPostProcessor
+    @Autowired(required = false)
+    private ObjectPostProcessor<Object> objectObjectPostProcessor; 
+    
+    
+    @Autowired(required = false)
+	public void setFilterChainProxySecurityConfigurer(
+        ObjectPostProcessor<Object> objectPostProcessor,
+		@Value("#{@autowiredWebSecurityConfigurersIgnoreParents.getWebSecurityConfigurers()}") 			List<SecurityConfigurer<Filter, WebSecurity>> webSecurityConfigurers){ 
+        
+        webSecurity = objectPostProcessor
+				.postProcess(new WebSecurity(objectPostProcessor));
+                   for (SecurityConfigurer<Filter, WebSecurity> webSecurityConfigurer : webSecurityConfigurers) {
+			webSecurity.apply(webSecurityConfigurer);
+		}
+		this.webSecurityConfigurers = webSecurityConfigurers;
+    }
+    
+    // 创建beanName为'springSecurityFilterChain'的过滤器链并得到整合后的Filter
+    @Bean(name = AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME)
+	public Filter springSecurityFilterChain() throws Exception {
+        // webSecurityConfigurers 是用于创建web配置的对象集合
+		boolean hasConfigurers = webSecurityConfigurers != null
+				&& !webSecurityConfigurers.isEmpty();
+		if (!hasConfigurers) {
+            // 若没有SecurityConfigurer的实现类（只要继承了WebSecurityConfigurerAdapter就不会为空)
+            // 则创建默认的WebSecurityConfigurerAdapter类
+			WebSecurityConfigurerAdapter adapter = objectObjectPostProcessor
+					.postProcess(new WebSecurityConfigurerAdapter() {
+					});
+			webSecurity.apply(adapter);
+		}
+        // 将WebSecurity对象转换为Filter（查看下文）
+		return webSecurity.build();
+	}
+}
+
+// 通过SPEL调用，目的是为了查找容器中所有类型为WebSecurityConfigurer的bean整合成集合                   
+final class AutowiredWebSecurityConfigurersIgnoreParents {
+    public List<SecurityConfigurer<Filter, WebSecurity>> getWebSecurityConfigurers() {
+		List<SecurityConfigurer<Filter, WebSecurity>> webSecurityConfigurers 
+            												= new ArrayList<>();
+		Map<String, WebSecurityConfigurer> beansOfType = beanFactory
+				.getBeansOfType(WebSecurityConfigurer.class);
+		for (Entry<String, WebSecurityConfigurer> entry : beansOfType.entrySet()) {
+			webSecurityConfigurers.add(entry.getValue());
+		}
+		return webSecurityConfigurers;
+	}
+}
+```
+
+> 1. 基于`WebSecurityConfiguration`来创建`WebSecurity`对象。并调用`build()`初始化相关类。
+> 2. `setFilterChainProxySecurityConfigurer`会将容器内的所有`WebSecurityConfigurer`类型的bean添加到集合中作为参数注入。
+> 3. `WebSecurity`处理`Filter过滤器链`相关，`HttpSecurity`处理http请求相关，都实现自`SecurityBuilder`。
+> 4. 如果容器中`SecurityConfigurer<Filter, WebSecurity>`的子类、实现类集合为空，那么就会创建默认的`WebSecurityConfigurerAdapter`对象并加入到容器中。
+
+##### 2.1 AbstractSecurityBuilder.build()🔒
+
+```java
+public abstract class AbstractSecurityBuilder<O> implements SecurityBuilder<O> {
+    
+    private AtomicBoolean building = new AtomicBoolean();
+	private O object;
+    
+    public final O build() throws Exception {
+        // CAS保证多线程下只能创建一次
+		if (this.building.compareAndSet(false, true)) {
+			this.object = doBuild();
+			return this.object;
+		}
+		throw new AlreadyBuiltException("This object has already been built");
+	}
+    // 模板方法,由子类具体实现
+    protected abstract O doBuild() throws Exception;
+}
+
+public abstract class AbstractConfiguredSecurityBuilder<O, B extends SecurityBuilder<O>>
+		extends AbstractSecurityBuilder<O> {
+    @Override
+	protected final O doBuild() throws Exception {
+        // 加锁初始化,BuildState由五种状态
+		synchronized (configurers) {
+			buildState = BuildState.INITIALIZING;
+			beforeInit(); // 钩子函数,初始化前调用,默认空实现
+			init();
+			buildState = BuildState.CONFIGURING;
+			beforeConfigure(); // 钩子函数,配置前调用,默认空实现
+			configure();
+			buildState = BuildState.BUILDING;
+			O result = performBuild();
+			buildState = BuildState.BUILT;
+			return result;
+		}
+	}
+    private void init() throws Exception {
+        // 获取所有security的配置类
+		Collection<SecurityConfigurer<O, B>> configurers = getConfigurers();
+		// 依次初始化他们
+		for (SecurityConfigurer<O, B> configurer : configurers) {
+			configurer.init((B) this); // 此处会调用`WebSecurityConfigurerAdapter.init()方法`
+		}
+		// 所有调用apply的security的配置类在BuildState为INITIALIZING都会加入其中，后续补上初始化
+		for (SecurityConfigurer<O, B> configurer : configurersAddedInInitializing) {
+			configurer.init((B) this);
+		}
+	}
+    // 模板方法，默认由三个实现：AuthenticationManagerBuilder、HttpSecurity、WebSecurity
+    // 分别对应内置鉴权管理器，DefaultSecurityFilterChain、FilterChainProxy相关配置
+    protected abstract O performBuild() throws Exception;
+}
+```
+
+> 1. 核心在于找出所有需要初始化的`SecurityConfigurer`的子类对`SecurityBuilder`的子类进行初始化操作。
+> 2. 此处也会调用`WebSecurityConfigurerAdapter.init()`方法。
+
+#### 3.  @EnableGlobalAuthentication🎈
 
 ```java
 /**
@@ -581,9 +704,10 @@ public class AuthenticationConfiguration {
 }
 ```
 
-> `@EnableGlobalAuthentication`的核心就是对`AuthenticationConfiguration`和`ObjectPostProcessorConfiguration`的注入。
+> 1. `@EnableGlobalAuthentication`的核心就是对`AuthenticationConfiguration`和`ObjectPostProcessorConfiguration`的注入。
+> 2. `AuthenticationConfiguration`中的两个Bean的注入只有没有子类复写`configure(AuthenticationManagerBuilder auth)`方法时才会初始化(init()方法)。
 
-##### 2.1 ObjectPostProcessorConfiguration
+##### 3.1 ObjectPostProcessorConfiguration
 
 ```java
 @Configuration(proxyBeanMethods = false)
@@ -633,7 +757,7 @@ final class AutowireBeanFactoryObjectPostProcessor
 > 3. `ObjectPostProcessorConfiguration`默认注入了`ObjectPostProcessor`的实现类`AutowireBeanFactoryObjectPostProcessor`到容器中。核心就是`初始化Bean`并自动注入。
 > 4. 使用`ObjectPostProcessor`的目的是为了解决`因为便于管理大量对象，没有暴露这些对象的属性，但是需要手动注册bean到容器中`的问题，注入到容器中的bean我们可以对其进行管理、修改或增强。
 
-##### 2.2 AuthenticationConfiguration🔒
+##### 3.2 AuthenticationConfiguration🔒
 
 ```java
 @Configuration(proxyBeanMethods = false)
@@ -768,104 +892,6 @@ public class AuthenticationConfiguration {
 > 3. 尝试通过获取容器中的`AuthenticationManagerBuilder`并调用委派模式、建造者模式来创建`AuthenticationManager`。
 > 4. 如果仍没有，么会基于类型在容器中进行查找（找不到或多个会抛出异常），然后进行鉴权，如果成功返回`Authentication`，否则抛出异常。
 
-#### 3. WebSecurityConfiguration
-
-```java
-@Configuration(proxyBeanMethods = false)
-public class WebSecurityConfiguration implements ImportAware, BeanClassLoaderAware {
-    
-    private WebSecurity webSecurity;
-    private List<SecurityConfigurer<Filter, WebSecurity>> webSecurityConfigurers;
-    
-    @Autowired(required = false)
-	public void setFilterChainProxySecurityConfigurer(){ 
-        // 此处代码是把容器中的SecurityConfigurer的实现类转换为SecurityBuilder设置为webSecurity的属性
-        // 并将SecurityConfigurer的实现类加入集合中
-    }
-    
-    // 创建beanName为'springSecurityFilterChain'的过滤器链并得到整合后的Filter
-    @Bean(name = AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME)
-	public Filter springSecurityFilterChain() throws Exception {
-        // webSecurityConfigurers 是用于创建web配置的对象集合
-		boolean hasConfigurers = webSecurityConfigurers != null
-				&& !webSecurityConfigurers.isEmpty();
-		if (!hasConfigurers) {
-            // 若没有SecurityConfigurer的实现类（只要继承了WebSecurityConfigurerAdapter就不会为空)
-            // 则创建默认的WebSecurityConfigurerAdapter类
-			WebSecurityConfigurerAdapter adapter = objectObjectPostProcessor
-					.postProcess(new WebSecurityConfigurerAdapter() {
-					});
-			webSecurity.apply(adapter);
-		}
-        // 将WebSecurity对象转换为Filter（查看下文）
-		return webSecurity.build();
-	}
-}
-```
-
-> 1. 基于`WebSecurityConfiguration`来创建`WebSecurity`对象。
-> 2. `WebSecurity`处理`Filter过滤器链`相关，`HttpSecurity`处理http请求相关，都实现自`SecurityBuilder`。
-> 3. 如果容器中`SecurityConfigurer<Filter, WebSecurity>`的子类、实现类集合为空，那么就会创建默认的`WebSecurityConfigurerAdapter`对象并加入到容器中。
-
-##### 3.1 AbstractSecurityBuilder.build()🔒
-
-```java
-public abstract class AbstractSecurityBuilder<O> implements SecurityBuilder<O> {
-    
-    private AtomicBoolean building = new AtomicBoolean();
-	private O object;
-    
-    public final O build() throws Exception {
-        // CAS保证多线程下只能创建一次
-		if (this.building.compareAndSet(false, true)) {
-			this.object = doBuild();
-			return this.object;
-		}
-		throw new AlreadyBuiltException("This object has already been built");
-	}
-    // 模板方法,由子类具体实现
-    protected abstract O doBuild() throws Exception;
-}
-
-public abstract class AbstractConfiguredSecurityBuilder<O, B extends SecurityBuilder<O>>
-		extends AbstractSecurityBuilder<O> {
-    @Override
-	protected final O doBuild() throws Exception {
-        // 加锁初始化,BuildState由五种状态
-		synchronized (configurers) {
-			buildState = BuildState.INITIALIZING;
-			beforeInit(); // 钩子函数,初始化前调用,默认空实现
-			init();
-			buildState = BuildState.CONFIGURING;
-			beforeConfigure(); // 钩子函数,配置前调用,默认空实现
-			configure();
-			buildState = BuildState.BUILDING;
-			O result = performBuild();
-			buildState = BuildState.BUILT;
-			return result;
-		}
-	}
-    private void init() throws Exception {
-        // 获取所有security的配置类
-		Collection<SecurityConfigurer<O, B>> configurers = getConfigurers();
-		// 依次初始化他们
-		for (SecurityConfigurer<O, B> configurer : configurers) {
-			configurer.init((B) this); // 此处会调用`WebSecurityConfigurerAdapter.init()方法`
-		}
-		// 所有调用apply的security的配置类在BuildState为INITIALIZING都会加入其中，后续补上初始化
-		for (SecurityConfigurer<O, B> configurer : configurersAddedInInitializing) {
-			configurer.init((B) this);
-		}
-	}
-    // 模板方法，默认由三个实现：AuthenticationManagerBuilder、HttpSecurity、WebSecurity
-    // 分别对应内置鉴权管理器，DefaultSecurityFilterChain、FilterChainProxy相关配置
-    protected abstract O performBuild() throws Exception;
-}
-```
-
-> 1. 核心在于找出所有需要初始化的`SecurityConfigurer`的子类对`SecurityBuilder`的子类进行初始化操作。
-> 2. 此处也会调用`WebSecurityConfigurerAdapter.init()`方法。
-
 #### 4. WebSecurityConfigurerAdapter
 
 ```java
@@ -974,18 +1000,8 @@ public abstract class WebSecurityConfigurerAdapter implements
 >
 > 3. 最终`AuthenticationManager`对象作为``parentAuthenticationManager`属性被用于`ProviderManager`创建，并注入到容器中。
 >
-> 4. 和`ProviderManager`流程类似，`WebSecurity`和`HttpSecurity`也是被设置属性参数后注入到容器中。
+> 4. 和`ProviderManager`流程类似，`WebSecurity`和`HttpSecurity`也是被设置属性参数后通过`FilterChainProxy`构建成Filter过滤器注入到容器中。
 >
->    ```java
->    @Override
->        protected void configure(AuthenticationManagerBuilder auth) throws Exception {
->            // 可以配置多个AuthenticationProvider的实现类
->            // 但是建议一个UserDetailService对应一个AuthenticationProvider
->            auth.authenticationProvider()
->                .authenticationProvider()
->                .userDetailsService(userManager)
->                .passwordEncoder(new BCryptPasswordEncoder());
->    ```
 
 #### 5. ProvideManager
 
@@ -1046,18 +1062,205 @@ public class ProviderManager implements AuthenticationManager, MessageSourceAwar
 ![](https://image.leejay.top/FvU2DWc-HPFITz_0jZCnzyqerxFO)
 
 > 1. `ProviderManager`是`AuthenticationManager`的实现类，持有`AuthenticationProvider`集合的引用。
+>
 > 2. 容器中可以存在多个`AuthenticationProvider`的实现类和一个`AuthenticationManager`实现类。
+>
+>    ```java
+>    @Override
+>    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+>        // 可以配置多个AuthenticationProvider的实现类
+>        // 但是建议一个UserDetailService对应一个AuthenticationProvider
+>        auth.authenticationProvider()
+>            .authenticationProvider()
+>            .userDetailsService(userManager)
+>            .passwordEncoder(new BCryptPasswordEncoder());
+>    }
+>    ```
+>
 > 3. `ProviderManager`在鉴权是会先尝试调用用户指定的单个或多个`AuthenticationProvider（没有就跳过）`，然后尝试执行`AuthenticationManager`的实现类进行鉴权。
 
+#### 6. 流程图总结
 
+<iframe id="embed_dom" name="embed_dom" frameborder="0" style="height:400px;" src="https://www.processon.com/embed/60498ba67d9c08214c661ec2"></iframe>
 
-
-
-
+> 直接点击链接在线访问<a href="https://www.processon.com/view/link/6049dcdbe401fd39d60176e1">Spring Security源码解析</a>
 
 ## Filter
 
-### Spring Security Filter
+### Spring Security内置过滤器
+
+SpringSecurity中内置了一些Filter过滤器，可以通过`HttpSecurity`进行内置和自定义过滤器配置。
+
+#### Filter执行顺序
+
+##### FilterComparator
+
+```java
+final class FilterComparator implements Comparator<Filter>, Serializable {
+    FilterComparator() {
+        // 从100开始，依次叠加100，数组越小越靠前
+		Step order = new Step(INITIAL_ORDER, ORDER_STEP);
+		put(ChannelProcessingFilter.class, order.next()); // 100
+		put(ConcurrentSessionFilter.class, order.next()); // 200
+		put(WebAsyncManagerIntegrationFilter.class, order.next()); // 300
+		put(SecurityContextPersistenceFilter.class, order.next());
+		put(HeaderWriterFilter.class, order.next());
+		put(CorsFilter.class, order.next());
+		put(CsrfFilter.class, order.next());
+		put(LogoutFilter.class, order.next());
+		filterToOrder.put(
+"org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter",
+				order.next());
+		filterToOrder.put(		"org.springframework.security.saml2.provider.service.servlet.filter.Saml2WebSsoAuthenticationRequestFilter",
+				order.next());
+		put(X509AuthenticationFilter.class, order.next());
+		put(AbstractPreAuthenticatedProcessingFilter.class, order.next());
+		filterToOrder.put("org.springframework.security.cas.web.CasAuthenticationFilter",
+				order.next());
+		filterToOrder.put(
+			"org.springframework.security.oauth2.client.web.OAuth2LoginAuthenticationFilter",
+				order.next());
+		filterToOrder.put(		"org.springframework.security.saml2.provider.service.servlet.filter.Saml2WebSsoAuthenticationFilter",
+				order.next());
+		put(UsernamePasswordAuthenticationFilter.class, order.next());
+		put(ConcurrentSessionFilter.class, order.next());
+		filterToOrder.put(
+				"org.springframework.security.openid.OpenIDAuthenticationFilter", order.next());
+		put(DefaultLoginPageGeneratingFilter.class, order.next());
+		put(DefaultLogoutPageGeneratingFilter.class, order.next());
+		put(ConcurrentSessionFilter.class, order.next());
+		put(DigestAuthenticationFilter.class, order.next());
+		filterToOrder.put(			"org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationFilter", order.next());
+		put(BasicAuthenticationFilter.class, order.next());
+		put(RequestCacheAwareFilter.class, order.next());
+		put(SecurityContextHolderAwareRequestFilter.class, order.next());
+		put(JaasApiIntegrationFilter.class, order.next());
+		put(RememberMeAuthenticationFilter.class, order.next());
+		put(AnonymousAuthenticationFilter.class, order.next());
+		filterToOrder.put(
+			"org.springframework.security.oauth2.client.web.OAuth2AuthorizationCodeGrantFilter",
+				order.next());
+		put(SessionManagementFilter.class, order.next());
+		put(ExceptionTranslationFilter.class, order.next());
+		put(FilterSecurityInterceptor.class, order.next());
+		put(SwitchUserFilter.class, order.next());
+	}
+    // 通过class名称去map中查找，找不到就去找父类的，还是找不到就返回null
+    private Integer getOrder(Class<?> clazz) {
+		while (clazz != null) {
+			Integer result = filterToOrder.get(clazz.getName());
+			if (result != null) {
+				return result;
+			}
+			clazz = clazz.getSuperclass();
+		}
+		return null;
+	}
+    // 判断map中是否已存在该名字的过滤器。
+    public boolean isRegistered(Class<? extends Filter> filter) {
+		return getOrder(filter) != null;
+	}
+}
+```
+
+> 1. 将一些过滤器按照指定顺序排列，从100开始依次叠加100，数值越小越靠前。
+> 2. 通过类名在map中查找并进行找到，判断和比较。
+
+##### HttpSecurity
+
+```java
+public final class HttpSecurity extends
+		AbstractConfiguredSecurityBuilder<DefaultSecurityFilterChain, HttpSecurity>
+		implements SecurityBuilder<DefaultSecurityFilterChain>,
+		HttpSecurityBuilder<HttpSecurity> {
+	private FilterComparator comparator = new FilterComparator();
+    
+	// 添加过滤器到map中
+	public HttpSecurity addFilter(Filter filter) {
+		Class<? extends Filter> filterClass = filter.getClass();
+		if (!comparator.isRegistered(filterClass)) {
+			throw new IllegalArgumentException(
+					"The Filter class "
+							+ filterClass.getName()
+							+ " does not have a registered order and cannot be added without a specified order. Consider using addFilterBefore or addFilterAfter instead.");
+		}
+		this.filters.add(filter);
+		return this;
+	}
+	// 将新增过滤器放到指定过滤器之前执行
+	public HttpSecurity addFilterBefore(Filter filter,
+			Class<? extends Filter> beforeFilter) {
+		comparator.registerBefore(filter.getClass(), beforeFilter);
+		return addFilter(filter);
+	}
+
+    // 将新增的过滤器放到指定的过滤器位置（即order值相同）
+	public HttpSecurity addFilterAt(Filter filter, Class<? extends Filter> atFilter) {
+		this.comparator.registerAt(filter.getClass(), atFilter);
+		return addFilter(filter);
+	}
+	
+    // 将新增的过滤器放到指定过滤器后面
+	public HttpSecurity addFilterAfter(Filter filter, Class<? extends Filter> afterFilter) {
+		comparator.registerAfter(filter.getClass(), afterFilter);
+		return addFilter(filter);
+	}
+}
+```
+
+#### 内置过滤器
+
+| 过滤器                                        | 作用                                                         |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| ChannelProcessingFilter                       | 过滤哪些请求需要使用https还是http协议                        |
+| ConcurrentSessionFilter                       | 判断session是否过期及更新最新的访问时间                      |
+| WebAsyncManagerIntegrationFilter              | 用于集成SecurityContext到Spring异步执行机制中的 WebAsyncManager。 |
+| SecurityContextPersistenceFilter              | 控制SecurityContext生命周期，请求来时创建，结束时清空        |
+| HeaderWriterFilter                            | 给http请求添加header                                         |
+| CorsFilter                                    | 针对cors跨域进行的设置                                       |
+| CsrfFilter                                    | 用于防止csrf跨站攻击                                         |
+| LogoutFilter                                  | 处理注销的过滤器                                             |
+| X509AuthenticationFilte                       | X509认证过滤器                                               |
+| AbstractPreAuthenticatedProcessingFilter      | 主要用于身份的提取而不是验证                                 |
+| CasAuthenticationFilter                       | CAS单点登录模块，依赖于Spring Security CAS模块               |
+| <b>`UsernamePasswordAuthenticationFilter`</b> | 处理用户及密码认证的核心过滤器                               |
+| DefaultLoginPageGeneratingFilter              | 生成默认的登陆页面/login                                     |
+| DefaultLogoutPageGeneratingFilter             | 生成默认的登出页/logout                                      |
+| BasicAuthenticationFilter                     | 负责http头中显示的基本身份验证凭据，默认启用                 |
+| RequestCacheAwareFilter                       | 用于处理因登录打断原有请求，继而登陆后自动跳转的功能。       |
+| RememberMeAuthenticationFilter                | 处理记住我功能的过滤器                                       |
+| AnonymousAuthenticationFilter                 | 对于无需登录直接访问的资源会授予其匿名用户身份               |
+| SessionManagementFilter                       | session管理器                                                |
+| FilterSecurityInterceptor                     | 决定了访问特定路径应该具备的权限（动态权限控制必备）         |
+
+### Spring Security过滤器链
+
+在Spring Security Filter中是通过`FilterChainProxy`来管理多个代理不同路径的`SecurityFilterChain`过滤器链，同时`FilterChainProxy`也是过滤器链中的一部分。如下图所示：
+
+![](https://image.leejay.top/Fkm7UwFn7VaOJUnFvaDMZIrfo0k-)
+
+```java
+public interface SecurityFilterChain {
+	boolean matches(HttpServletRequest request);
+    // 路径对应的过滤器链
+	List<Filter> getFilters();
+}
+
+// 默认实现
+public final class DefaultSecurityFilterChain implements SecurityFilterChain {
+}
+
+// WebSecurity.performBuild()会将SecurityFilterChain的实现类作为参数构建为FilterChainProxy
+public class FilterChainProxy extends GenericFilterBean {
+    private List<SecurityFilterChain> filterChains;
+    public FilterChainProxy(SecurityFilterChain chain) {
+		this(Arrays.asList(chain));
+	}
+}
+```
+
+> 1. `SecurityFilterChain`作为构建`FilterChainProxy`的参数来构建过滤器链。
+> 2. `FilterChainProxy`默认实现`DefaultSecurityFilterChain`一般由`HttpSecurity`创建。
+> 3. `FilterChainProxy`既是过滤器链也是过滤器。
 
 ### Servlet Filter
-
