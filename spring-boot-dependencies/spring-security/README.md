@@ -1235,9 +1235,9 @@ public final class HttpSecurity extends
 
 ### Spring Security过滤器链
 
-在Spring Security Filter中是通过`FilterChainProxy`来管理多个代理不同路径的`SecurityFilterChain`过滤器链，同时`FilterChainProxy`也是过滤器链中的一部分。如下图所示：
+在Spring Security Filter中是通过`FilterChainProxy`来管理多个代理不同路径的`SecurityFilterChain`过滤器链，同时`FilterChainProxy`是通过`DelegatingFilterProxy`加入到过滤器链中的一部分。如下图所示：
 
-![](https://image.leejay.top/Fkm7UwFn7VaOJUnFvaDMZIrfo0k-)
+![](https://image.leejay.top/Fn262VRuzsxESP1x-K4XBoie2rsC)
 
 ```java
 public interface SecurityFilterChain {
@@ -1251,16 +1251,516 @@ public final class DefaultSecurityFilterChain implements SecurityFilterChain {
 }
 
 // WebSecurity.performBuild()会将SecurityFilterChain的实现类作为参数构建为FilterChainProxy
+// FilterChainProxy是一个过滤器链，也是一个过滤器
 public class FilterChainProxy extends GenericFilterBean {
     private List<SecurityFilterChain> filterChains;
     public FilterChainProxy(SecurityFilterChain chain) {
 		this(Arrays.asList(chain));
 	}
 }
+// 用于代理一个标准的Servlet Filter 用于集成到IOC的管理
+public class DelegatingFilterProxy extends GenericFilterBean {
+}
+
+// 为了在Sevlet Filter中注入Spring Bean的特性而出现的
+public abstract class GenericFilterBean implements Filter, BeanNameAware, EnvironmentAware,
+		EnvironmentCapable, ServletContextAware, InitializingBean, DisposableBean {
+}
 ```
 
 > 1. `SecurityFilterChain`作为构建`FilterChainProxy`的参数来构建过滤器链。
 > 2. `FilterChainProxy`默认实现`DefaultSecurityFilterChain`一般由`HttpSecurity`创建。
 > 3. `FilterChainProxy`既是过滤器链也是过滤器。
+> 4. `DelegatingFilterProxy`可以代理一个`Servlet Filter`，将其继承到Spring Bean中去。
 
-### Servlet Filter
+---
+
+## JWT(Json Web Token)
+
+`JOSE`是一种旨在提供在各方之间安全传递声明（claims）的方法的规范集。包含如下规范：
+
+- `JWS（RFC 7515） -JSON Web签名`，描述生成和处理签名消息。
+- `JWE（RFC 7516） -JSON Web加密`，描述了保护和处理加密 消息。
+- JWK（RFC 7517） -JSON Web密钥，描述 Javascript 对象签名和加密中加密密钥的 格式和处理。
+- JWA（RFC 7518） -JSON Web算法，描述了 Javascript 对象签名和加密中使用的 加密 算法。
+- `JWT（RFC 7519） -JSON Web令牌`，描述以 JSON 编码并由 JWS 或 JWE 保护的声明的表示形式。
+
+> `JWT`又包含`JWS`和`JWE`，一般使用的都是基于`JWS`方式，`JWE`方法更加安全，但是也更复杂。
+
+---
+
+## RBAC
+
+主要包含三个概念，分别是`用户`、`角色`和`权限`。
+
+- 用户
+
+不局限于单个用户，可以是一个用户组，也可以是一个部门，只要有访问资源需求的都可以作为用户。
+
+- 角色
+
+角色是特定权限的集合。角色是可以`继承与分组`的，一个角色可以属于多个用户，一个用户可以拥有多个角色。
+
+- 权限
+
+粒度最小的权限单位。一般体现在接口的控制上，同一个权限可以属于不同的角色。
+
+### 基于配置的权限
+
+```java
+http.authorizeRequests()
+    // 要求/admin/**路径的请求必须有ADMIN和USER权限
+    .antMatchers("/admin/**").access("hasAuthority('ADMIN') and hasAuthority('USER')") 
+    // 只要用户有ADMIN，USER其中一个权限即可
+    .antMatchers("/admin/**").access("hasAnyAuthority('ADMIN'，'USER')")
+    // 要求/super/**路径必须有SUPER_ADMIN权限
+	.antMatchers("/super/**").access("hasAuthority('SUPER_ADMIN')")
+    // /hello路径需要由ROLE_USER的角色
+    .antMatchers("/hello").access("hasRole('USER')")
+    // /test是否放行由RbacService.checkPermission()返回值决定
+    .antMatchers("/test").access("@rbacService.checkPermission()")
+    .antMatchers("/api/**").anonymous() // 可以匿名用户登录
+    .antMatchers("/**").authenticated() // 所有用户都可以访问不需要鉴权
+    .antMatchers("/a/**").permitAll() // 开放请求
+
+    
+@Service
+public class RbacService {
+    public boolean checkPermission() {
+        return System.currentTimeMillis() % 2 == 0;
+    }
+}
+
+```
+
+> 1. `hasRole`和`hasAuthority`的区别：前者会给角色添加`ROLE_`前缀，后者不会。
+> 2. `hasAnyRole`和`hasAnyAuthority`表明只要用户有其中一种权限就可以登录。
+> 3. `anonymous()`表明用户不需要登录也可以访问，此用户默认拥有`ROLE_ANONYMOUS`权限。
+> 4. `PermitAll()`表明任何用户（匿名和非匿名）都能登录，`anonymous()`表明只有匿名用户（已登录用户不能登录）才能登录。
+
+### 基于注解的权限
+
+#### 启动全局权限注解
+
+```java
+@Retention(value = java.lang.annotation.RetentionPolicy.RUNTIME)
+@Target(value = { java.lang.annotation.ElementType.TYPE })
+@Documented
+@Import({ GlobalMethodSecuritySelector.class })
+@EnableGlobalAuthentication
+@Configuration
+public @interface EnableGlobalMethodSecurity {
+    // 基于表达式进行方法访问控制
+	boolean prePostEnabled() default false;
+    // 开启@Secured注解
+	boolean securedEnabled() default false;
+	// 开启JSR-250注解
+	boolean jsr250Enabled() default false;
+	boolean proxyTargetClass() default false;
+	AdviceMode mode() default AdviceMode.PROXY;
+	int order() default Ordered.LOWEST_PRECEDENCE;
+}
+```
+
+> 1. 注解的三种方式要选择一种开启。
+> 2. `EnableGlobalMethodSecurity`核心配置类是`GlobalMethodSecurityConfiguration`
+
+#### @PreAuthorize
+
+```java
+@PreAuthorize("hasAuthority('QUERY')")
+```
+
+> 此方法要求用户具有`QUERY`权限才能访问，即使配置文件中没有对此路径的访问有权限要求。
+
+#### @PostAuthorize
+
+```java
+@PostAuthorize("returnObject.name == 'test'")
+```
+
+> 判断当前返回的用户名是否为test，只有条件满足才会返回，否则抛出异常。
+
+#### @PreFilter
+
+```java
+@PreFilter(filterTarget = "ids", value = "filterObject%2==0")
+public void delete(List<Integer> ids) {
+    // 只保留偶数的id
+    Stream.of(ids).forEach(System.out::println);
+}
+```
+
+> 将传入的参数按照条件进行过滤
+
+#### @PostFilter
+
+```java
+@PostFilter("filterObject.name == authentication.name")
+public List<Person> findOne() {
+    List<Person> persons = new ArrayList<>();
+    persons.add(new Person("zhangsan"));
+    persons.add(new Person("admin"));
+    return persons;
+}
+```
+
+> 只能返回name与当前登录用户名一致的数据。
+
+---
+
+## SecurityContext安全上下文
+
+与`当前线程`绑定的安全上下文。可以获取用户的相关信息。我们通过
+
+```java
+User user = (User)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+```
+
+来获取当前登录用户（匿名用户就是`anonymousUser`字符串）的相关信息。
+
+```java
+public interface SecurityContext extends Serializable {
+    // 获取当前的认证信息，有可能为null
+    Authentication getAuthentication();
+    // 用于修改或删除当前的认证信息
+	void setAuthentication(Authentication authentication);
+}
+// 安全上下文holder持有安全上下文的引用
+public interface SecurityContextHolderStrategy {
+	void clearContext();
+	SecurityContext getContext();
+	void setContext(SecurityContext context);
+	SecurityContext createEmptyContext();
+}
+```
+
+### SecurityContextHolder源码解析
+
+```java
+public class SecurityContextHolder {
+    // 上下文策略类
+    private static SecurityContextHolderStrategy strategy;
+    public static final String SYSTEM_PROPERTY = "spring.security.strategy";
+    // 获取系统变量
+	private static String strategyName = System.getProperty(SYSTEM_PROPERTY);
+    // 类加载时被初始化
+    static {
+		initialize();
+	}
+    
+    private static void initialize() {
+        // 判断当前的安全上下文的实现类
+		if (!StringUtils.hasText(strategyName)) {
+			strategyName = MODE_THREADLOCAL; // 没设置就采用此默认的
+		}
+		if (strategyName.equals(MODE_THREADLOCAL)) {
+			strategy = new ThreadLocalSecurityContextHolderStrategy();
+		}
+		// 省略
+		else {
+			// 加载自定义的安全上下文实现类
+			try {
+				Class<?> clazz = Class.forName(strategyName);
+				Constructor<?> customStrategy = clazz.getConstructor();
+				strategy = (SecurityContextHolderStrategy) customStrategy.newInstance();
+			}
+			catch (Exception ex) {
+				ReflectionUtils.handleReflectionException(ex);
+			}
+		}
+		// 打印日志用
+		initializeCount++;
+	}
+}
+```
+
+### ThreadLocalSecurityContextHolderStrategy
+
+```java
+// 默认的实现类，基于ThreadLocal实现线程隔离，不清楚可以查看ThreadLocal源码
+// 详见：https://leejay.top/post/threadlocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F/
+final class ThreadLocalSecurityContextHolderStrategy implements SecurityContextHolderStrategy {
+	private static final ThreadLocal<SecurityContext> contextHolder = new ThreadLocal<>();
+    
+	public void clearContext() {
+		contextHolder.remove();
+	}
+
+	public SecurityContext getContext() {
+		SecurityContext ctx = contextHolder.get();
+         
+		if (ctx == null) {
+			ctx = createEmptyContext();
+			contextHolder.set(ctx);
+		}
+
+		return ctx;
+	}
+
+	public void setContext(SecurityContext context) {
+		Assert.notNull(context, "Only non-null SecurityContext instances are permitted");
+		contextHolder.set(context);
+	}
+
+	public SecurityContext createEmptyContext() {
+		return new SecurityContextImpl(); // 调用SecurityContext默认实现类设置权限相关
+	}
+}
+```
+
+### SecurityContextImpl
+
+```java
+public class SecurityContextImpl implements SecurityContext {
+    private Authentication authentication;
+
+	public SecurityContextImpl() {}
+
+	public SecurityContextImpl(Authentication authentication) {
+		this.authentication = authentication;
+	}
+    @Override
+	public void setAuthentication(Authentication authentication) {
+		this.authentication = authentication;
+	}
+}
+```
+
+> 在Filter过滤器处理中会设置`Authentication`到`SecurityContextImpl`中。
+
+---
+
+## 动态权限
+
+`FilterSecurityInterceptor `负责Spring Security中的权限控制。
+
+```java
+public class FilterSecurityInterceptor extends AbstractSecurityInterceptor implements
+		Filter {
+    private FilterInvocationSecurityMetadataSource securityMetadataSource;
+
+    public void doFilter(ServletRequest request, ServletResponse response,
+			FilterChain chain) throws IOException, ServletException {
+        // 将当前的请求响应及过滤器链构建成FilterInvocation（即与Http相关连的对象）
+		FilterInvocation fi = new FilterInvocation(request, response, chain);
+		invoke(fi);
+	}
+    
+    public void invoke(FilterInvocation fi) throws IOException, ServletException {
+        // 判断是否有标记
+		if ((fi.getRequest() != null)
+				&& (fi.getRequest().getAttribute(FILTER_APPLIED) != null)
+				&& observeOncePerRequest) {
+			fi.getChain().doFilter(fi.getRequest(), fi.getResponse());
+		}
+		else {
+			// 给请求加标记
+			if (fi.getRequest() != null && observeOncePerRequest) {
+				fi.getRequest().setAttribute(FILTER_APPLIED, Boolean.TRUE);
+			}
+            // 核心代码
+			InterceptorStatusToken token = super.beforeInvocation(fi);
+
+			try {
+				fi.getChain().doFilter(fi.getRequest(), fi.getResponse());
+			}
+			finally {
+				super.finallyInvocation(token);
+			}
+
+			super.afterInvocation(token, null);
+		}
+	}
+}
+public abstract class AbstractSecurityInterceptor implements InitializingBean,
+		ApplicationEventPublisherAware, MessageSourceAware {
+}
+protected InterceptorStatusToken beforeInvocation(Object object) {
+		// 获取当前url对应的权限
+		Collection<ConfigAttribute> attributes = this.obtainSecurityMetadataSource()
+				.getAttributes(object);
+		// 省略
+		// 重要！
+		try {
+            // 对当前用户的权限和需要的权限进行投票
+			this.accessDecisionManager.decide(authenticated, object, attributes);
+		}
+		catch (AccessDeniedException accessDeniedException) {
+			throw accessDeniedException;
+		}
+		// 省略
+	}
+```
+
+> 1. 通过创建`FilterInvocationSecurityMetadataSource`实现类指定当前url的权限是什么。
+> 2. 通过创建`AccessDecisionManager`的实现类指定决策管理器策略。
+
+### 安全权限数据源
+
+#### 自定义权限数据源
+
+```java
+public class UrlFilterInvocationSecurityMetadataSource implements FilterInvocationSecurityMetadataSource {
+
+    @Override
+    public Collection<ConfigAttribute> getAttributes(Object object) 
+        								throws IllegalArgumentException {
+        // FilterInvocation是与http对象相关联
+        FilterInvocation f = (FilterInvocation) object;
+        String url = f.getRequestUrl();
+        if (url.contains("/login") || url.contains("/logout")) {
+            return null;
+        }
+        // 此处处理动态权限
+        return SecurityConfig.createList("ADMIN", "QUERY");
+    }
+
+    @Override
+    public Collection<ConfigAttribute> getAllConfigAttributes() {
+        return null;
+    }
+
+    @Override
+    public boolean supports(Class<?> clazz) {
+        return false;
+    }
+}
+```
+
+> 此处只是模拟赋予url的权限操作，实际业务可能从数据库或其他第三方获取。
+
+### 投票模型
+
+#### 自定义AccessDecisionManager
+
+```java
+public interface AccessDecisionManager {
+    // 决策的核心方法
+    void decide(Authentication authentication, Object object,
+			Collection<ConfigAttribute> configAttributes) throws AccessDeniedException,
+			InsufficientAuthenticationException;
+    boolean supports(ConfigAttribute attribute);
+    boolean supports(Class<?> clazz);
+}
+// 自定义决策管理器
+public class UrlAccessDecisionManager implements AccessDecisionManager {
+
+    @Override
+    public void decide(Authentication authentication, Object object, Collection<ConfigAttribute> configAttributes) throws AccessDeniedException, InsufficientAuthenticationException {
+        for (ConfigAttribute configAttribute : configAttributes) {
+            // 未登录ROLE_ANONYMOUS角色
+            if (authentication instanceof AnonymousAuthenticationToken) {
+                throw new BadCredentialsException("未登录!");
+            }
+            // ① 当前url请求需要的权限
+            String role = configAttribute.getAttribute();
+            // ② 当前用户所具有的角色
+            Collection<? extends GrantedAuthority> authorities 
+                						= authentication.getAuthorities();
+            for (GrantedAuthority authority : authorities) {
+                // 只要包含其中一个角色即可访问
+                if (authority.getAuthority().equals(role)) {
+                    return;
+                }
+            }
+        }
+        throw new AccessDeniedException("请联系管理员分配权限！");
+    }
+}
+```
+
+> 1. `AffirmativeBased `基于肯定的决策器。 用户持有一个同意访问的角色就能通过。
+> 2. `ConsensusBased`基于共识的决策器。 用户持有同意的角色数量多于禁止的角色数。
+> 3. `UnanimousBased` 基于一致的决策器。 用户持有的所有角色都同意访问才能放行。
+
+#### 自定义AccessDecisionVoter
+
+`AccessDecisionManager`的实现类中支持`List<AccessDecisionVoter<?>> decisionVoters`作为参数传入，所以我们也可以通过创建`AccessDecisionVoter`的实现类创建自定义投票器。
+
+```java
+public interface AccessDecisionVoter<S> {
+	int ACCESS_GRANTED = 1;
+	int ACCESS_ABSTAIN = 0;
+	int ACCESS_DENIED = -1;
+    // 用于判断是否授予访问权限
+    int vote(Authentication authentication, S object,
+			Collection<ConfigAttribute> attributes);
+    boolean supports(ConfigAttribute attribute);
+    boolean supports(Class<?> clazz);
+}
+```
+
+### 异常控制器
+
+#### 未登录异常控制器
+
+```java
+public class AdminAuthenticationEntryPoint implements AuthenticationEntryPoint {
+    @Override
+    public void commence(HttpServletRequest request, 
+                         HttpServletResponse response, 
+                         AuthenticationException authException) 
+        									throws IOException, ServletException {
+        response.setHeader("Content-type", "text/html;charset=UTF-8");
+        response.getWriter().append(ResponseBody.error("您需要登录！").toString());
+        response.flushBuffer();
+    }
+}
+```
+
+> 处理未登录情况下所有访问的接口（放行除外）
+
+#### 无权限异常控制器
+
+```java
+public class UrlAccessDeniedHandler implements AccessDeniedHandler {
+
+    @Override
+    public void handle(HttpServletRequest request, 
+                       HttpServletResponse response, 
+                       AccessDeniedException accessDeniedException) 
+        								throws IOException, ServletException {
+        response.setHeader("Content-type", "text/html;charset=UTF-8");
+        response.getWriter().append(ResponseBody.error("您无此权限！").toString());
+        response.flushBuffer();
+    }
+}
+```
+
+> 处理登录后没有权限访问的路径
+
+### Spring Security config
+
+```java
+@Configuration
+public class PermissionSecurityConfig extends WebSecurityConfigurerAdapter {
+    
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        ExpressionUrlAuthorizationConfigurer<HttpSecurity>.ExpressionInterceptUrlRegistry 									registry = http.antMatcher("/**").authorizeRequests();
+
+        http.csrf().disable().cors();
+
+        // 未登录认证异常
+        http.exceptionHandling().authenticationEntryPoint(new AdminAuthenticationEntryPoint());
+        // 登录过后访问无权限的接口时自定义403响应内容
+        http.exceptionHandling().accessDeniedHandler(new UrlAccessDeniedHandler());
+        registry.withObjectPostProcessor(new ObjectPostProcessor<FilterSecurityInterceptor>() {
+            @Override
+            public <O extends FilterSecurityInterceptor> O postProcess(O object) {
+                object.setSecurityMetadataSource(
+                    new UrlFilterInvocationSecurityMetadataSource());
+                object.setAccessDecisionManager(
+                    new UrlAccessDecisionManager());
+                return object;
+            }
+        });
+        registry
+                .antMatchers("/hello").hasAuthority("ADMIN")
+                .antMatchers("/test").anonymous();  // hello还需要权限，其他的不需要了
+        super.configure(http);
+}
+```
+
+> 这里是通过`ObjectPostProcessor`设置`FilterSecurityInterceptor`的参数注入到容器中的。之前有提到过，`ObjectPostProcessor`可以将new出来的对象加入容器中。

@@ -21,7 +21,7 @@ import java.io.PrintWriter;
  * spring security 核心配置类
  */
 @Configuration
-@ConditionalOnMissingBean(CommonSecurityConfig.class)
+@ConditionalOnMissingBean(PermissionSecurityConfig.class)
 @EnableGlobalMethodSecurity(prePostEnabled = true) // 开启此注解才能使用@PreAuthorize等注解
 public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
@@ -47,7 +47,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
                 })
                 .and().authorizeRequests()
                 .antMatchers("/hello", "/json").access("hasAuthority('USER')") // SPEL表达式
-                .antMatchers("/admin/**").access("hasAuthority('ADMIN') and hasAuthority('USER')")
+                .antMatchers("/admin/**").access("hasAnyAuthority('ADMIN') and hasAuthority('USER')")
                 .antMatchers("/super/**").access("hasAuthority('SUPER_ADMIN')")
                 .antMatchers("/test").access("@rbacService.checkPermission()") // 使用自定义类实现校验,false就需要登录
                 .antMatchers("/**").authenticated() // 只要是登录用户都可以访问（不需要查验权限之类）

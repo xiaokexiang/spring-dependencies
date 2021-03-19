@@ -1,26 +1,36 @@
 package io.spring.springsecurity.config;
 
+import io.spring.common.response.ResponseBody;
 import io.spring.springsecurity.config.filter.PreLoginFilter;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.authentication.configuration.EnableGlobalAuthentication;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.builders.WebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.logout.LogoutHandler;
+import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 
 import javax.annotation.Resource;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.PrintWriter;
 
 /**
  * @author xiaokexiang
  * @since 2021/3/8
  */
+@Slf4j
 @Configuration
-@EnableGlobalAuthentication
+@ConditionalOnMissingBean(PermissionSecurityConfig.class)
 public class CommonSecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Resource
@@ -47,18 +57,42 @@ public class CommonSecurityConfig extends WebSecurityConfigurerAdapter {
                 .and()
                 .authorizeRequests().anyRequest().authenticated()
                 .and()
-                .authenticationProvider(new AuthenticationProvider() {
-
+                .logout()
+                .addLogoutHandler(new LogoutHandler() {
                     @Override
-                    public Authentication authenticate(Authentication authentication) throws AuthenticationException {
-                        return null;
+                    public void logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
+                        User user = (User) authentication.getPrincipal();
+                        String username = user.getUsername();
+                        log.info(String.format("%s prepare to logout", username));
+                    }
+                })
+                .logoutSuccessHandler(new LogoutSuccessHandler() {
+                    @Override
+                    public void onLogoutSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
+                        User user = (User) authentication.getPrincipal();
+                        String username = user.getUsername();
+                        log.info("username: {} is offline now", username);
+                        ResponseBody<String> responseBody = ResponseBody.ok("logout success");
+                        PrintWriter printWriter = response.getWriter();
+                        printWriter.print(responseBody);
+                        printWriter.flush();
+                        printWriter.close();
                     }
 
-                    @Override
-                    public boolean supports(Class<?> authentication) {
-                        return false;
-                    }
-                }) // 可以添加多个authenticationProvider，这样在ProviderManager会依次进行authenticate
+                })
+                .and()
+//                .authenticationProvider(new AuthenticationProvider() {
+//
+//                    @Override
+//                    public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+//                        return null;
+//                    }
+//
+//                    @Override
+//                    public boolean supports(Class<?> authentication) {
+//                        return false;
+//                    }
+//                }) // 可以添加多个authenticationProvider，这样在ProviderManager会依次进行authenticate
                 .addFilterBefore(new PreLoginFilter(LOGIN_PROCESS_URL, null), UsernamePasswordAuthenticationFilter.class)
                 .formLogin()
                 .loginProcessingUrl(LOGIN_PROCESS_URL) // 实际向后台提交请求的路径，此后会执行UsernamePasswordAuthenticationFilter类

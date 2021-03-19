@@ -25,6 +25,7 @@
         <mybatis.version>2.1.4</mybatis.version>
         <commons.io.version>2.6</commons.io.version>
         <hadoop.version>2.10.1</hadoop.version>
+        <spring.security.jwt.version>1.1.1.RELEASE</spring.security.jwt.version>
     </properties>
 
     <dependencyManagement>
