@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+        https://www.springframework.org/schema/beans/spring-beans.xsd">
+    <!-- 基于构造器的xml注入-->
+    <bean id="person" class="org.springframework.entity.Person">
+        <constructor-arg index="0" value="18"/>
+        <constructor-arg index="1" value="lucy.construct.xml"/>
+    </bean>
+    <!-- 基于setter的xml注入-->
+    <bean id="person2" class="org.springframework.entity.Person">
+        <property name="age" value="18"/>
+        <property name="name" value="lucy.setter.xml"/>
+    </bean>
+</beans>
