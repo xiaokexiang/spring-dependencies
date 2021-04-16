@@ -2,7 +2,6 @@ package org.springframework.chapter2;
 
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.context.annotation.Bean;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
