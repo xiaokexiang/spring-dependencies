@@ -1,6 +1,7 @@
-package org.springframework.chapter1;
+package org.springframework;
 
-import org.springframework.entity.Person;
+import org.springframework.chapter1.*;
+import org.springframework.chapter1.Person;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;

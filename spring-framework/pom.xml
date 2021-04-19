@@ -10,6 +10,12 @@
     <version>1.0.0</version>
 
     <dependencies>
+        <!-- 解析yaml使用（springboot内置，spring没有）-->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>1.26</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-context</artifactId>

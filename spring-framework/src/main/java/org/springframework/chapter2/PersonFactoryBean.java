@@ -1,7 +1,7 @@
 package org.springframework.chapter2;
 
 import org.springframework.beans.factory.FactoryBean;
-import org.springframework.entity.Person;
+import org.springframework.chapter1.Person;
 import org.springframework.stereotype.Component;
 
 /**

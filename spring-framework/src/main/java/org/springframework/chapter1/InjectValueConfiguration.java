@@ -1,7 +1,5 @@
 package org.springframework.chapter1;
 
-import org.springframework.context.annotation.Primary;
-import org.springframework.entity.Person;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 

@@ -1,4 +1,4 @@
-package org.springframework.chapter1;
+package org.springframework;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.chapter3.SelfApplicationPublisher;

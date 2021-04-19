@@ -1,4 +1,4 @@
-package org.springframework.entity;
+package org.springframework.chapter1;
 
 import lombok.Data;
 
