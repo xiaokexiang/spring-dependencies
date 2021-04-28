@@ -10,6 +10,18 @@
     <version>1.0.0</version>
 
     <dependencies>
+        <!-- spring-aop是兼容了AspectJ的使用方式，但是底层仍是spring自己实现的一套-->
+        <dependency>
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+            <version>1.9.6</version>
+        </dependency>
+        <!-- cglib -->
+        <dependency>
+            <groupId>cglib</groupId>
+            <artifactId>cglib</artifactId>
+            <version>3.1</version>
+        </dependency>
         <!-- 解析yaml使用（springboot内置，spring没有）-->
         <dependency>
             <groupId>org.yaml</groupId>

@@ -8,6 +8,7 @@ import org.springframework.context.annotation.*;
  * @since 2021/4/25
  */
 @Configuration
+@Import(CustomImportBeanDefinition.class)
 @ComponentScan("org.springframework.chapter10")
 @PropertySource("classpath:person.properties")
 public class LifecycleSourceConfiguration {
