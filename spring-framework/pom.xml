@@ -10,6 +10,11 @@
     <version>1.0.0</version>
 
     <dependencies>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.20</version>
+        </dependency>
         <!-- spring-aop是兼容了AspectJ的使用方式，但是底层仍是spring自己实现的一套-->
         <dependency>
             <groupId>org.aspectj</groupId>
