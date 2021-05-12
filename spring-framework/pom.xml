@@ -21,12 +21,6 @@
             <artifactId>aspectjweaver</artifactId>
             <version>1.9.6</version>
         </dependency>
-        <!-- cglib -->
-        <dependency>
-            <groupId>cglib</groupId>
-            <artifactId>cglib</artifactId>
-            <version>3.1</version>
-        </dependency>
         <!-- 解析yaml使用（springboot内置，spring没有）-->
         <dependency>
             <groupId>org.yaml</groupId>
