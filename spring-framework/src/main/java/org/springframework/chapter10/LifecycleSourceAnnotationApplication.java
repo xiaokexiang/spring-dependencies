@@ -1,8 +1,6 @@
 package org.springframework.chapter10;
 
-import org.springframework.context.ApplicationEvent;
-import org.springframework.context.ApplicationListener;
-import org.springframework.context.PayloadApplicationEvent;
+import org.springframework.chapter9.PayloadApplicationEventListener;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 /**
@@ -16,7 +14,7 @@ public class LifecycleSourceAnnotationApplication {
         ctx.register(LifecycleSourceConfiguration.class);
         ctx.register(LifecycleNameReadPostProcessor.class);
         ctx.register(LifecycleDestructionPostProcessor.class);
-        ctx.addApplicationListener((ApplicationListener<PayloadApplicationEvent<Integer>>) System.out::println);
+        ctx.addApplicationListener(new PayloadApplicationEventListener());
         ctx.addBeanFactoryPostProcessor(new LifecycleBeanFactoryPostProcessor()); // 注入BeanFactoryPostProcessor
         System.out.println("================准备刷新IOC容器==================");
 
