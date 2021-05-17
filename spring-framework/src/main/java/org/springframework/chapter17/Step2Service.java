@@ -24,8 +24,10 @@ public class Step2Service {
             transactionalDao.insert(1100, 2);
             int i = 1 / 0;
             System.out.println("step2 end ...");
-        } catch (RuntimeException e) {
-            //
+        } catch (Exception e) {
+            System.out.println("12121");
+
         }
+
     }
 }

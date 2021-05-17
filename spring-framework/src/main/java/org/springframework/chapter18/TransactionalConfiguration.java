@@ -1,8 +1,7 @@
-package org.springframework.chapter17;
+package org.springframework.chapter18;
 
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.TransactionManager;
@@ -12,11 +11,11 @@ import javax.sql.DataSource;
 
 /**
  * @author xiaokexiang
- * @since 2021/5/13
+ * @since 2021/5/14
  */
-@Configuration
+@ComponentScan("org.springframework.chapter18")
 @EnableTransactionManagement
-public class TransactionConfiguration {
+public class TransactionalConfiguration {
 
     @Bean
     public DataSource dataSource() {
@@ -24,18 +23,13 @@ public class TransactionConfiguration {
         dataSource.setDriverClassName("com.mysql.jdbc.Driver");
         dataSource.setUsername("bocloud");
         dataSource.setPassword("a@!#123");
-        dataSource.setUrl("jdbc:mysql://10.10.10.5:3306/test?characterEncoding=utf8");
+        dataSource.setUrl("jdbc:mysql://172.19.18.161:3316/test?characterEncoding=utf8");
         return dataSource;
     }
 
     @Bean
-    public TransactionManager transactionManager() {
+    public TransactionManager transactionManager(DataSource dataSource) {
         // 配置类@Bean间调用，注意proxyBeanMethods
-        return new DataSourceTransactionManager(dataSource());
-    }
-
-    @Bean
-    public JdbcTemplate jdbcTemplate() {
-        return new JdbcTemplate(dataSource());
+        return new DataSourceTransactionManager(dataSource);
     }
 }
