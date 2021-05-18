@@ -18,16 +18,15 @@ public class Step2Service {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.NESTED)
     public void step2() {
-        try {
-            System.out.println("step2 begin ...");
-            System.out.println(TransactionSynchronizationManager.getCurrentTransactionName());
-            transactionalDao.insert(1100, 2);
-            int i = 1 / 0;
-            System.out.println("step2 end ...");
-        } catch (Exception e) {
-            System.out.println("12121");
-
-        }
+//        try {
+        System.out.println("step2 begin ...");
+        System.out.println(TransactionSynchronizationManager.getCurrentTransactionName());
+        transactionalDao.insert(1100, 2);
+        int i = 1 / 0;
+        System.out.println("step2 end ...");
+//        } catch (Exception e) {
+//            System.out.println("12121");
+//        }
 
     }
 }

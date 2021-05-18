@@ -1,5 +1,6 @@
 package org.springframework.chapter17;
 
+import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -26,20 +27,25 @@ public class TransactionalService implements ApplicationContextAware {
     @Resource
     private Step2Service step2Service;
 
-    @Transactional(rollbackFor = Exception.class, propagation = Propagation.NESTED)
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void step1() {
         System.out.println("step1 begin ...");
         System.out.println(TransactionSynchronizationManager.getCurrentTransactionName());
         transactionalDao.insert(900, 1);
-//        try {
-//            step2Service.step2();
-//            int i = 1 / 0;
-//        } catch (Exception e) {
-//            System.out.println("step1 ... error");
-//        }
-
+        // 同一个class内事务之间的调用
+        ((TransactionalService) (AopContext.currentProxy())).step3();
+        // 不同类之间事务的互相调用
+        step2Service.step2();
         applicationContext.publishEvent(new Account());
         System.out.println("step1 end ...");
+    }
+
+    public void step3() {
+        System.out.println("step2 begin ...");
+        System.out.println(TransactionSynchronizationManager.getCurrentTransactionName());
+        transactionalDao.insert(1100, 2);
+        int i = 1 / 0;
+        System.out.println("step2 end ...");
     }
 
     private ApplicationContext applicationContext;
