@@ -5,9 +5,8 @@ import lombok.Data;
 import java.io.Serializable;
 
 /**
- * role
- *
- * @author
+ * @author xiaokexiang
+ * @since 2020/12/16
  */
 @Data
 public class Role implements Serializable {

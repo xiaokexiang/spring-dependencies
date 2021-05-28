@@ -1,9 +1,9 @@
 package io.spring.mybatis.mapper;
 
-import io.spring.mybatis.entity.User;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 import org.springframework.stereotype.Repository;
+import io.spring.mybatis.entity.User;
 
 import java.util.List;
 

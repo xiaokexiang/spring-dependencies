@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="io.spring.mybatis.mapper.RoleDao">
-    <resultMap id="BaseResultMap" type="io.spring.mybatis.org.springframework.entity.Role">
+    <resultMap id="BaseResultMap" type="io.spring.mybatis.entity.Role">
         <id column="role_id" jdbcType="INTEGER" property="id"/>
         <result column="role_name" jdbcType="VARCHAR" property="name"/>
     </resultMap>
@@ -14,7 +14,7 @@
         from role role
         where role.id = #{id,jdbcType=INTEGER}
     </select>
-    <select id="selectAll" resultType="io.spring.mybatis.org.springframework.entity.Role">
+    <select id="selectAll" resultType="io.spring.mybatis.entity.Role">
         select *
         from role
     </select>
@@ -23,12 +23,12 @@
         from role
         where id = #{id,jdbcType=INTEGER}
     </delete>
-    <insert id="insert" keyColumn="id" keyProperty="id" parameterType="io.spring.mybatis.org.springframework.entity.Role"
+    <insert id="insert" keyColumn="id" keyProperty="id" parameterType="io.spring.mybatis.entity.Role"
             useGeneratedKeys="true">
         insert into role (`name`)
         values (#{name,jdbcType=VARCHAR})
     </insert>
-    <insert id="insertSelective" keyColumn="id" keyProperty="id" parameterType="io.spring.mybatis.org.springframework.entity.Role"
+    <insert id="insertSelective" keyColumn="id" keyProperty="id" parameterType="io.spring.mybatis.entity.Role"
             useGeneratedKeys="true">
         insert into role
         <trim prefix="(" suffix=")" suffixOverrides=",">
@@ -42,7 +42,7 @@
             </if>
         </trim>
     </insert>
-    <update id="updateByPrimaryKeySelective" parameterType="io.spring.mybatis.org.springframework.entity.Role">
+    <update id="updateByPrimaryKeySelective" parameterType="io.spring.mybatis.entity.Role">
         update role
         <set>
             <if test="name != null">
@@ -51,7 +51,7 @@
         </set>
         where id = #{id,jdbcType=INTEGER}
     </update>
-    <update id="updateByPrimaryKey" parameterType="io.spring.mybatis.org.springframework.entity.Role">
+    <update id="updateByPrimaryKey" parameterType="io.spring.mybatis.entity.Role">
         update role
         set `name` = #{name,jdbcType=VARCHAR}
         where id = #{id,jdbcType=INTEGER}
