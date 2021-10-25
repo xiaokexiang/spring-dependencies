@@ -2,32 +2,29 @@ package io.spring.mybatis.entity;
 
 import lombok.Data;
 
-import java.util.Date;
+import java.util.Set;
 
 /**
  * @author xiaokexiang
- * @since 2020/12/16
+ * @since 2021/10/25
  */
 @Data
-public class User {
+public class Department {
     private String id;
 
     private String name;
 
-    private Integer age;
+    private String tel;
 
-    private Date birthday;
-
-    private Department department;
+    private Set<User> users;
 
     @Override
     public String toString() {
-        return "User{" +
+        return "Department{" +
                 "id='" + id + '\'' +
                 ", name='" + name + '\'' +
-                ", age=" + age +
-                ", birthday=" + birthday +
-                ", department=" + department +
+                ", tel='" + tel + '\'' +
+                ", users=" + users +
                 '}';
     }
 }

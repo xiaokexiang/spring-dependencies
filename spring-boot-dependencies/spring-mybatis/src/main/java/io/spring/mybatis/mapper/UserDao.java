@@ -15,6 +15,12 @@ import java.util.List;
 @Repository
 public interface UserDao {
 
-    @Select("SELECT * FROM user")
-    List<User> select();
+    // 只查询user信息，不包含部门
+    List<User> findAll();
+
+    List<User> findAllLazy();
+
+    List<User> findAllByDepartmentId();
+
+    List<User> findAllUseTypeHandler();
 }

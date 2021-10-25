@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.spring.mybatis.mapper.UserDao">
+    <resultMap id="userMap" type="io.spring.mybatis.entity.User">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="age" column="age"/>
+        <result property="birthday" column="birthday"/>
+        <association property="department" javaType="io.spring.mybatis.entity.Department">
+            <id property="id" column="department_id"/>
+            <result property="name" column="department_name"/>
+        </association>
+    </resultMap>
+    <!--  懒加载 -->
+    <resultMap id="user_lazy" type="io.spring.mybatis.entity.User">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="age" column="age"/>
+        <result property="birthday" column="birthday"/>
+        <!--   column是外层查询的字段，作为参数传入select指定的方法     -->
+        <association property="department" javaType="io.spring.mybatis.entity.Department"
+                     select="io.spring.mybatis.mapper.DepartmentDao.findById" column="department_id"/>
+    </resultMap>
+    <resultMap id="userHandlerMap" type="io.spring.mybatis.entity.User">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="age" column="age"/>
+        <result property="birthday" column="birthday"/>
+        <association property="department" javaType="io.spring.mybatis.entity.Department"/>
+    </resultMap>
+    <select id="findAll" resultType="io.spring.mybatis.entity.User">
+        select usr.*, dep.*
+        from tbl_user usr
+                 left join tbl_department dep on usr.department_id = dep.id
+    </select>
+
+    <select id="findAllLazy" resultMap="user_lazy">
+        select * from tbl_user
+    </select>
+    <select id="findAllByDepartmentId" parameterType="string" resultType="io.spring.mybatis.entity.User">
+        select * from tbl_user where department_id = #{departmentId}
+    </select>
+    <select id="findAllUseTypeHandler" resultType="io.spring.mybatis.entity.User" resultMap="userHandlerMap">
+        select * from tbl_user
+    </select>
+</mapper>
