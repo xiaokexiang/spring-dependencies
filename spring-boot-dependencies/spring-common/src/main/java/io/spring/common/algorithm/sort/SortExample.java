@@ -11,7 +11,7 @@ import java.util.Arrays;
  */
 public interface SortExample<T extends Comparable<T>> {
 
-    void sort(T[] ts);
+    void sort(T[] ts, boolean show);
 
     /**
      * 元素比较

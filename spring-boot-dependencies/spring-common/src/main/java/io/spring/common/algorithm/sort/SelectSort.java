@@ -10,8 +10,7 @@ package io.spring.common.algorithm.sort;
 public class SelectSort implements SortExample<Integer> {
 
     @Override
-    public void sort(Integer[] ts) {
-
+    public void sort(Integer[] ts, boolean show) {
         for (int i = 0; i < ts.length; i++) {
             int min = i;
             // 找出最小的元素
@@ -22,12 +21,8 @@ public class SelectSort implements SortExample<Integer> {
             }
             exchange(ts, i, min);
         }
-        show(ts);
-    }
-
-    public static void main(String[] args) {
-        Integer[] arrays = new Integer[]{3, 1, 2, 5, 7};
-        SelectSort selectSort = new SelectSort();
-        selectSort.sort(arrays);
+        if (show) {
+            show(ts);
+        }
     }
 }
