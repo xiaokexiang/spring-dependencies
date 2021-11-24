@@ -1,6 +1,7 @@
 package io.spring.common.algorithm.sort;
 
 import java.util.Arrays;
+import java.util.StringJoiner;
 
 /**
  * @author xiaokexiang
@@ -30,7 +31,9 @@ public interface SortExample<T extends Comparable<T>> {
      * 打印数组
      */
     default void show(T[] ts) {
-        Arrays.stream(ts).forEach(System.out::print);
+        StringJoiner joiner = new StringJoiner(",");
+        Arrays.stream(ts).forEach(s -> joiner.add(String.valueOf(s)));
+        System.out.println(joiner.toString());
     }
 
     /**
