@@ -1,5 +1,6 @@
 package io.spring.common.algorithm.sort;
 
+import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.StringJoiner;
 
@@ -46,6 +47,29 @@ public interface SortExample<T extends Comparable<T>> {
             }
         }
         return true;
+    }
+
+    /**
+     * 利用临时数组将分开排序的数组合并并返回
+     */
+    default void merge(T[] ts, int start, int mid, int end) {
+        @SuppressWarnings("unchecked")
+        T[] temp = (T[]) Array.newInstance(ts.getClass(), ts.length);
+        System.arraycopy(ts, 0, temp, 0, ts.length);
+        int i = start, j = mid + 1;
+        for (int k = start; k <= end; k++) {
+            //
+            if (less(temp[i], temp[mid])) {
+                ts[k] = temp[j++];
+            } else if (j > end) {
+                ts[k] = temp[i++];
+            } else if (less(temp[j], temp[i])) {
+                ts[k] = temp[j++];
+            } else {
+                ts[k] = temp[i++];
+            }
+
+        }
     }
 
 }
