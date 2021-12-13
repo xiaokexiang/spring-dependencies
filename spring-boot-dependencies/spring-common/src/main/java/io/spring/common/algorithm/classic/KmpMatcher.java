@@ -1,9 +1,4 @@
-package io.spring.common.algorithm.string;
-
-import org.springframework.util.StringUtils;
-
-import java.lang.reflect.Parameter;
-import java.util.Arrays;
+package io.spring.common.algorithm.classic;
 
 /**
  * @author xiaokexiang
@@ -24,7 +19,7 @@ import java.util.Arrays;
  * 模式串移动后：       A  B  A  B  A  A  A  B  A  B
  * 主串与模式串在下表为3的A值处不匹配，那么需要将位置为next[i](next[3]=1)的模式串值(即A)与当前主串不匹配的位置(索引3)继续开始匹配
  */
-public class Kmp {
+public class KmpMatcher {
 
     /**
      * 获取next数组（即与主串不匹配时模式串移动的索引）
@@ -95,6 +90,6 @@ public class Kmp {
     public static void main(String[] args) {
         char[] parent = {'A', 'B', 'B', 'A', 'A', 'B', 'A', 'B', 'A', 'A', 'B', 'A'};
         char[] child = {'B', 'A', 'A'};
-        System.out.println(Kmp.indexOf(parent, child));
+        System.out.println(KmpMatcher.indexOf(parent, child));
     }
 }

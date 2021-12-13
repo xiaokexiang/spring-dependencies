@@ -1,4 +1,4 @@
-package io.spring.common.algorithm;
+package io.spring.common.algorithm.classic;
 
 /**
  * @author xiaokexiang
@@ -54,25 +54,35 @@ public class DynamicProgramming {
         int[] w = new int[]{0, 1, 4, 3};
         // 表示前i个商品的，背包容量为j的最大价值
         int[][] val = new int[v.length][p + 1];
-
+        int[][] path = new int[v.length][p + 1];
         for (int i = 1; i < v.length; i++) {
             for (int j = 1; j < val[i].length; j++) {
                 if (w[i] > j) {
                     val[i][j] = val[i - 1][j];
                 } else {
-                    val[i][j] = Math.max(val[i - 1][j], v[i] + val[i - 1][j - w[i]]);
+                    if (val[i - 1][j] > v[i] + val[i - 1][j - w[i]]) {
+                        val[i][j] = val[i - 1][j];
+                    } else {
+                        // 需要记录最优解
+                        val[i][j] = v[i] + val[i - 1][j - w[i]];
+                        path[i][j] = 1;
+                    }
                 }
             }
         }
 
-        // 打印结果
-        for (int i = 0; i < v.length; i++) {
-            for (int j = 0; j < val[i].length; j++) {
-                System.out.print(val[i][j] + " ");
-            }
-            System.out.println();
-        }
+        // 打印商品放入的结果
 
+        int i = val.length - 1;
+        int j = val[0].length - 1;
+
+        while(i > 0 & j > 0) {
+            if (path[i][j] == 1) {
+                System.out.printf("第%d个商品放入背包中\n", i);
+                j = j - w[i];
+            }
+            i--;
+        }
     }
 
     public static void main(String[] args) {
