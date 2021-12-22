@@ -3,9 +3,6 @@ package io.spring.common.algorithm.sort;
 import edu.princeton.cs.algs4.StdOut;
 import edu.princeton.cs.algs4.StdRandom;
 import edu.princeton.cs.algs4.Stopwatch;
-import org.springframework.util.StopWatch;
-
-import java.util.Random;
 
 /**
  * @author xiaokexiang

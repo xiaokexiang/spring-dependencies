@@ -55,26 +55,55 @@ public class Mst {
             {2, 3, -1, -1, 4, 6, -1}
     };
 
+    /*
+     * ↓         5
+     * ↓     A ----- B
+     * ↓  7/  2\  /3  \9
+     * ↓ C       G      D
+     * ↓  8\  4/  \6  /4
+     * ↓    E ----- F
+     * ↓        5
+     */
     public static void prim() {
-        char[] result = new char[village.length];
-        // 记录最小和第二小的路径长度和位置
-        int min = Integer.MAX_VALUE, sec_min = Integer.MAX_VALUE, index = 0, sec_index = 0;
-        for (int i = 0, x = 0; i < distance.length && x < distance.length; x++) {
-            // 选取最短路径
-            result[x] = village[i];
-            min = sec_min;
-            index = sec_index;
+        int length = village.length;
+        // 存储顶点是否被选取, true/false 选取/未选取
+        boolean[] selected = new boolean[length];
+        // 已选顶点集合到该顶点的所有边中权值最小的那条边的大小
+        int[] minimum = new int[length];
+        // 最小权值边两端顶点的信息
+        char[] parent = new char[length];
+        // 记录返回值顺序
+        char[] result = new char[length];
+        for (int i = 0; i < distance.length; ) {
             for (int j = 0; j < distance[i].length; j++) {
-                if (distance[i][j] != -1 && min > distance[i][j]) {
-                    min = distance[i][j];
+                if (-1 != distance[i][j]) {
+                    // update
+                    minimum[j] = distance[i][j];
                     distance[j][i] = -1;
-                    index = j;
+                    parent[j] = village[i];
                 }
             }
-            // 至此一轮循环结束，标记距离最短的村庄已访问
+            // scan
+            int index = scan(minimum);
+            selected[index] = true;
+            minimum[index] = -1;
+            // add
+            result[i] = village[index];
             i = index;
         }
         System.out.println(Arrays.toString(result));
+    }
+
+    public static int scan(int[] minimum) {
+        int min = Integer.MAX_VALUE;
+        int index = 0;
+        for (int i = 0; i < minimum.length; i++) {
+            if (minimum[i] != 0 && minimum[i] != -1 && min > minimum[i]) {
+                min = minimum[i];
+                index = i;
+            }
+        }
+        return index;
     }
 
     public static void main(String[] args) {
