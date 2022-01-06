@@ -1,4 +1,4 @@
-package io.spring.common.algorithm.classic;
+package io.spring.common.algorithm.classic.figure;
 
 import java.util.Arrays;
 
@@ -58,11 +58,8 @@ import java.util.Arrays;
  * 当前已选择集合（a,g节点）中，g->b为3（需要注意这里本来是a->b且边为5，被替换的原因是因为到达b点的村庄有a和g，a->b > g->b，所以被替换掉）,a->c为7，g->e为4，g->f为6
  * 最小的边为g->b，将b点作为下一次遍历的村咋黄，同时将b点对应的mini设置为-1，表示b点已经被选择
  * 如此循环遍历。
- *
- * <p>
- * 数据结构思路-克鲁斯卡尔算法：
  */
-public class Mst {
+public class Prim {
     // 村庄集合
     static char[] village = {'A', 'B', 'C', 'D', 'E', 'F', 'G'};
     // 每个村庄各自之间的距离集合
@@ -91,7 +88,7 @@ public class Mst {
         String[] result = new String[length];
         // 用于记录总长度
         int sum = 0;
-        // a表示每次最短边对应的点,b表示循环多少次，7个点最少只有7条边
+        // a表示每次最短边对应的点,b表示循环多少次，7个点最少只有6条边
         for (int a = start, b = 0; a < distance.length && b < distance.length; b++) {
             // 特殊处理下起点村庄
             if (b == 0) {
@@ -118,7 +115,7 @@ public class Mst {
             // 3. add： 将最小权值的村庄加入集合中
             result[b] = parent[index] + "->" + village[index];
             sum += minimum[index];
-            // 将minimum中最短边的村庄标记为已选择，即Integer.MAX_VALUE - 1
+            // 将minimum中最短边的村庄标记为已选择，即Integer.MAX_VALUE
             minimum[index] = Integer.MAX_VALUE;
             // 并从最小边的点开始继续循环执行
             a = index;
@@ -127,6 +124,6 @@ public class Mst {
     }
 
     public static void main(String[] args) {
-        prim(2);
+        prim(0);
     }
 }
