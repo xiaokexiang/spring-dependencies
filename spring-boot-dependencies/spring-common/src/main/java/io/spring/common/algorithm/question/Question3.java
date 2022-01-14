@@ -64,23 +64,47 @@ public class Question3 {
             sum += arr[i];
         }
         // target>sum必定不存在方法数 & target和sum奇偶不同
-        if (Math.abs(target) > sum || target % 2 != sum % 2) {
+        if (Math.abs(target) > sum || (target + sum) >> 1 == 0) {
             return 0;
         }
         // 动态规划,[-sum,+sum] -> [0, sum]
         return subset(arr, (target + sum) >> 1);
     }
 
+    /**
+     * 基于空间优化的动态规划
+     */
     private static int subset(int[] arr, int target) {
         int[] dp = new int[target + 1];
-        // 不填数字也是一种解法
         dp[0] = 1;
-        for (int k : arr) {
-            for (int j = target; j >= k; j--) {
-                dp[j] += dp[j - k];
+        for (int num : arr) {
+            for (int j = target; j >= num; j--) {
+                // 如果target < num 那么肯定不会选取当前的num，也就是不会加上 dp[j - num]
+                dp[j] += dp[j - num];
             }
         }
         return dp[target];
+    }
+
+    /**
+     * 没有空间压缩的动态规划
+     */
+    private static int subset2(int[] arr, int target) {
+        // 填充i=0和j=0的情况
+        int[][] dp = new int[arr.length + 1][target + 1];
+        // 第一行第一列特殊处理
+        dp[0][0] = 1;
+        for (int i = 1; i <= arr.length; i++) {
+            for (int j = 0; j <= target; j++) {
+                // 当arr[i] > j时，没有无论加减都不会满足target，直接选择上一个
+                dp[i][j] = dp[i - 1][j];
+                if (j >= arr[i - 1]) {
+                    // 当arr[i] < j时，可以选择arr[i]或者不选择arr[i]，因为上面已经不选择了，现在再加上选择的
+                    dp[i][j] += dp[i - 1][j - arr[i - 1]];
+                }
+            }
+        }
+        return dp[arr.length][target];
     }
 
     public static void main(String[] args) {
