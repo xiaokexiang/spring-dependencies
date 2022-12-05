@@ -17,7 +17,7 @@ import javax.sql.DataSource;
  */
 @Configuration
 @EnableAspectJAutoProxy(exposeProxy = true)
-@EnableTransactionManagement
+@EnableTransactionManagement(proxyTargetClass = true)
 public class TransactionConfiguration {
 
     @Bean
@@ -25,8 +25,8 @@ public class TransactionConfiguration {
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName("com.mysql.jdbc.Driver");
         dataSource.setUsername("bocloud");
-        dataSource.setPassword("a@!#123");
-        dataSource.setUrl("jdbc:mysql://10.10.10.5:3306/test?characterEncoding=utf8");
+        dataSource.setPassword("123$abc");
+        dataSource.setUrl("jdbc:mysql://10.50.8.34:3316/test?characterEncoding=utf8");
         return dataSource;
     }
 
