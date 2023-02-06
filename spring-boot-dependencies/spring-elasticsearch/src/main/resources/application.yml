@@ -5,4 +5,7 @@ spring:
         enabled: on
       client:
         reactive:
-          endpoints: localhost:9200
+          endpoints: http://localhost:9200
+logging:
+  level:
+    tracer: TRACE
